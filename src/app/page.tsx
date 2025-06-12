@@ -1,10 +1,16 @@
+
+'use client';
+
+import React, { useState } from 'react';
 import { AppLayout } from '@/components/layout/app-layout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
 import type { Notification, Resident, AttendanceRecord, Meal } from '@/types';
-import { AlertTriangle, CheckCircle2, Info, Users, UtensilsCrossed, BellRing } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Info, Users, UtensilsCrossed, BellRing, ClipboardCheck } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
 
@@ -19,10 +25,14 @@ const mockAttendance: AttendanceRecord[] = [
   { id: 'att2', residentId: '2', date: new Date().toISOString().split('T')[0], mealType: 'lunch', status: 'absent', notes: 'Rendez-vous médical' },
 ];
 
-const mockMeals: Meal[] = [
-    { id: 'm1', name: 'Poulet Yassa', category: 'main', dietTags: ['Normal'], allergenTags: [] },
-    { id: 'm2', name: 'Poisson Vapeur', category: 'main', dietTags: ['Sans Sel'], allergenTags: [] },
-    { id: 'm3', name: 'Salade Composée', category: 'main', dietTags: ['Végétarien'], allergenTags: [] },
+const mockMealsToday: Meal[] = [
+  { id: 's1', name: 'Velouté de Légumes de Saison', category: 'starter', dietTags: ['Normal', 'Végétarien'], allergenTags: ['Céleri'] },
+  { id: 's2', name: 'Salade de Chèvre Chaud', category: 'starter', dietTags: ['Normal'], allergenTags: ['Gluten', 'Lactose'] },
+  { id: 'm1', name: 'Poulet Rôti et Gratin Dauphinois', category: 'main', dietTags: ['Normal'], allergenTags: ['Lactose'] },
+  { id: 'm2', name: 'Filet de Colin, Riz et Petits Légumes', category: 'main', dietTags: ['Sans Sel'], allergenTags: [] },
+  { id: 'm3', name: 'Lasagnes Végétariennes', category: 'main', dietTags: ['Végétarien'], allergenTags: ['Gluten', 'Lactose'] },
+  { id: 'd1', name: 'Mousse au Chocolat Maison', category: 'dessert', dietTags: ['Normal'], allergenTags: ['Oeuf', 'Lactose'] },
+  { id: 'd2', name: 'Salade de Fruits Frais', category: 'dessert', dietTags: ['Normal', 'Végétarien', 'Sans Sel'], allergenTags: [] },
 ];
 
 
@@ -34,11 +44,12 @@ const mockNotifications: Notification[] = [
 
 
 export default function DashboardPage() {
+  const [mealPreparationStatus, setMealPreparationStatus] = useState<Record<string, boolean>>({});
+
   const totalResidents = mockResidents.length;
   const presentForLunch = mockAttendance.filter(a => a.mealType === 'lunch' && a.status === 'present').length;
   
-  // Placeholder meal summary calculation
-  const totalMealsToPrepare = presentForLunch; // Simplified
+  const totalMealsToPrepare = presentForLunch; 
   const dietSpecificMeals = {
     'Sans sel': mockAttendance.filter(a => a.status === 'present' && mockResidents.find(r => r.id === a.residentId)?.dietaryRestrictions.includes('Sans sel')).length,
     'Végétarien': mockAttendance.filter(a => a.status === 'present' && mockResidents.find(r => r.id === a.residentId)?.dietaryRestrictions.includes('Végétarien')).length,
@@ -55,6 +66,28 @@ export default function DashboardPage() {
       default:
         return <CheckCircle2 className="h-5 w-5 text-green-500" />;
     }
+  };
+
+  const handleMealStatusChange = (mealId: string, isReady: boolean) => {
+    setMealPreparationStatus(prev => ({ ...prev, [mealId]: isReady }));
+  };
+
+  const categorizedMeals: Record<string, Meal[]> = mockMealsToday.reduce((acc, meal) => {
+    const category = meal.category;
+    if (!acc[category]) {
+      acc[category] = [];
+    }
+    acc[category].push(meal);
+    return acc;
+  }, {} as Record<string, Meal[]>);
+
+  const categoryOrder: Meal['category'][] = ['starter', 'main', 'dessert', 'snack', 'drink'];
+  const categoryLabels: Record<Meal['category'], string> = {
+    starter: 'Entrées',
+    main: 'Plats Principaux',
+    dessert: 'Desserts',
+    snack: 'Collations',
+    drink: 'Boissons',
   };
   
   return (
@@ -102,6 +135,52 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
         </div>
+
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <ClipboardCheck className="h-6 w-6 text-primary" />
+              <CardTitle className="font-headline">Suivi Préparation Repas (Déjeuner)</CardTitle>
+            </div>
+            <CardDescription className="font-body">
+              Cochez les plats prêts. Portions indicatives pour {presentForLunch} présents.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {categoryOrder.map(category => {
+              const mealsInCategory = categorizedMeals[category];
+              if (!mealsInCategory || mealsInCategory.length === 0) {
+                return null;
+              }
+              return (
+                <div key={category}>
+                  <h3 className="text-lg font-semibold font-body text-primary mb-3 border-b pb-2">{categoryLabels[category]}</h3>
+                  <div className="space-y-3">
+                    {mealsInCategory.map(meal => (
+                      <div key={meal.id} className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-muted/50 transition-colors">
+                        <div className="flex items-center gap-3">
+                          <Checkbox
+                            id={`meal-prep-${meal.id}`}
+                            checked={!!mealPreparationStatus[meal.id]}
+                            onCheckedChange={(checked) => handleMealStatusChange(meal.id, !!checked)}
+                            aria-label={`Marquer ${meal.name} comme prêt`}
+                          />
+                          <Label htmlFor={`meal-prep-${meal.id}`} className="font-body text-sm cursor-pointer">
+                            {meal.name}
+                          </Label>
+                        </div>
+                        <Badge variant="outline" className="font-body text-xs">{presentForLunch} portions</Badge>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+            {Object.keys(categorizedMeals).length === 0 && mockMealsToday.length === 0 && (
+                <p className="text-muted-foreground font-body text-center py-4">Aucun plat programmé pour ce service.</p>
+            )}
+          </CardContent>
+        </Card>
 
         <div className="grid gap-6 md:grid-cols-2">
           <Card>
