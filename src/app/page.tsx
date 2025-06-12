@@ -35,10 +35,10 @@ const mockAttendance: AttendanceRecord[] = [
   { id: 'att3', residentId: '3', date: today, mealType: 'lunch', status: 'present' },
   { id: 'att4', residentId: '4', date: today, mealType: 'lunch', status: 'present' },
   { id: 'att5', residentId: '5', date: today, mealType: 'lunch', status: 'present' },
-  { id: 'att6', residentId: '6', date: today, mealType: 'lunch', status: 'absent', notes: 'Rendez-vous coiffeur' }, // Sophie is absent
+  { id: 'att6', residentId: '6', date: today, mealType: 'lunch', status: 'absent', notes: 'Rendez-vous coiffeur' }, 
 ];
 
-const mockMealsToday: Meal[] = [
+const initialMockMealsToday: Meal[] = [
   { id: 's1', name: 'Velouté de Carottes au Cumin', category: 'starter', dietTags: ['Végétarien', 'Sans Sel'], allergenTags: [] },
   { id: 's2', name: 'Salade Composée du Chef', category: 'starter', dietTags: [], allergenTags: ['Gluten'] },
   { id: 'm1', name: 'Boeuf Bourguignon Traditionnel', category: 'main', dietTags: [], allergenTags: [] },
@@ -67,6 +67,11 @@ export default function DashboardPage() {
   const [mealPreparationStatus, setMealPreparationStatus] = useState<Record<string, boolean>>({});
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importedMenuData, setImportedMenuData] = useState<Meal[] | null>(null);
+
+  const mealsToDisplay = useMemo(() => {
+    return importedMenuData || initialMockMealsToday;
+  }, [importedMenuData]);
 
   const presentResidentAttendances = useMemo(() => {
     return mockAttendance.filter(a => a.mealType === 'lunch' && a.status === 'present');
@@ -106,13 +111,13 @@ export default function DashboardPage() {
   };
 
   const categorizedMeals: Record<string, Meal[]> = useMemo(() => 
-    mockMealsToday.reduce((acc, meal) => {
+    mealsToDisplay.reduce((acc, meal) => {
       const category = meal.category;
       if (!acc[category]) acc[category] = [];
       acc[category].push(meal);
       return acc;
     }, {} as Record<string, Meal[]>), 
-  []);
+  [mealsToDisplay]);
 
   const categoryOrder: Meal['category'][] = ['starter', 'main', 'dessert', 'snack', 'drink'];
   const categoryLabels: Record<Meal['category'], string> = {
@@ -125,22 +130,46 @@ export default function DashboardPage() {
 
   const mealPreparationDetails = useMemo(() => {
     const details: Record<string, Record<PreparationType, number>> = {};
-    mockMealsToday.forEach(meal => {
+    mealsToDisplay.forEach(meal => {
       details[meal.id] = { 'Normal': 0, 'Mixé': 0, 'Haché': 0 };
       presentResidents.forEach(resident => {
         const isResidentVegetarian = resident.dietaryRestrictions.includes('Végétarien');
         const isMealVegetarian = meal.dietTags?.includes('Végétarien');
         
         if (isResidentVegetarian && !isMealVegetarian && meal.category === 'main') {
-          return; 
+          // This logic might need adjustment if specific vegetarian dishes are listed in the menu
+          // For now, assume vegetarians get a dedicated vegetarian main dish if listed, otherwise skip non-veg main.
+          const vegMain = mealsToDisplay.find(m => m.category === 'main' && m.dietTags?.includes('Végétarien'));
+          if (vegMain && vegMain.id !== meal.id) return; 
         }
+        
+        // Check for allergies
+        if (meal.allergenTags && meal.allergenTags.some(allergen => resident.allergies.includes(allergen))) {
+            // Resident is allergic to this meal, do not count for preparation
+            // This is a simplification; real system might need alternative meal logic
+            return; 
+        }
+
+        // Check for dietary restrictions not covered by simple tags (e.g. "Sans porc" for a "Boeuf" dish is fine)
+        // This part can get complex. For now, we assume dietTags on meals are sufficient or specific meals are chosen.
+        // Example: if resident is "Sans sel" and meal is not "Sans Sel" tagged, they shouldn't get it.
+        if (meal.dietTags && resident.dietaryRestrictions.some(restriction => 
+            restriction.toLowerCase().includes('sans sel') && !meal.dietTags.some(tag => tag.toLowerCase().includes('sans sel')))
+        ) {
+            // Specific diet tag mismatch, skip
+            // This logic is basic and might need refinement based on how dietTags are used.
+            // It assumes if a resident needs "Sans sel", the meal *must* be tagged "Sans Sel".
+             if (!meal.dietTags.includes('Sans sel') && resident.dietaryRestrictions.includes('Sans sel')) return;
+
+        }
+
 
         const prepType = getPreparationTypeForResident(resident);
         details[meal.id][prepType]++;
       });
     });
     return details;
-  }, [presentResidents]);
+  }, [presentResidents, mealsToDisplay]);
 
   const onFileUpload = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -156,7 +185,6 @@ export default function DashboardPage() {
       return;
     }
     
-    // Limit to Excel files
     if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls')) {
         toast({
             variant: "destructive",
@@ -173,17 +201,17 @@ export default function DashboardPage() {
           title: "Importation réussie",
           description: result.message,
         });
-        // Reset file input
+        if (result.menuData) {
+          setImportedMenuData(result.menuData);
+        }
         if (fileInputRef.current) {
           fileInputRef.current.value = "";
         }
-        // Here you would typically refresh the menu data or update state
-        // For now, we just show a success message.
       } else {
         toast({
           variant: "destructive",
           title: "Échec de l'importation",
-          description: result.message || "Une erreur est survenue.",
+          description: result.message || "Une erreur est survenue lors de l'importation.",
         });
       }
     } catch (error) {
@@ -272,9 +300,10 @@ export default function DashboardPage() {
               if (!mealsInCategory || mealsInCategory.length === 0) return null;
               
               const categoryHasContent = mealsInCategory.some(meal => 
-                Object.values(mealPreparationDetails[meal.id]).some(count => count > 0)
+                Object.values(mealPreparationDetails[meal.id] || {}).some(count => count > 0)
               );
-              if (!categoryHasContent) return null;
+              if (!categoryHasContent && mealsToDisplay.length > 0) return null;
+
 
               return (
                 <div key={category}>
@@ -282,12 +311,15 @@ export default function DashboardPage() {
                   <div className="space-y-4">
                     {mealsInCategory.map(meal => {
                       const preparations = mealPreparationDetails[meal.id];
+                      if (!preparations) return null; // Meal might not be in details if no one is eating it
+                      
                       const hasPreparationsForThisMeal = Object.values(preparations).some(count => count > 0);
                       if (!hasPreparationsForThisMeal) return null;
 
                       return (
                         <div key={meal.id} className="p-3 rounded-lg border bg-card hover:bg-muted/50 transition-colors">
                           <p className="font-semibold font-body text-md mb-2">{meal.name}</p>
+                          {meal.description && <p className="text-xs text-muted-foreground mb-2">{meal.description}</p>}
                           <div className="space-y-2 pl-4">
                             {(Object.keys(preparations) as PreparationType[]).map(prepType => {
                               const count = preparations[prepType];
@@ -317,9 +349,12 @@ export default function DashboardPage() {
                 </div>
               );
             })}
-            {mockMealsToday.length === 0 && (
-                <p className="text-muted-foreground font-body text-center py-4">Aucun plat programmé pour ce service.</p>
+            {mealsToDisplay.length === 0 && (
+                <p className="text-muted-foreground font-body text-center py-4">Aucun plat programmé ou importé pour ce service. Utilisez le bouton "Importer" pour charger un menu.</p>
             )}
+             {(mealsToDisplay.length > 0 && !categoryOrder.some(category => categorizedMeals[category]?.some(meal => Object.values(mealPreparationDetails[meal.id] || {}).some(count => count > 0)))) && (
+                 <p className="text-muted-foreground font-body text-center py-4">Le menu est chargé, mais aucun résident présent ne correspond aux critères pour ces plats (vérifiez allergies, régimes, et présences).</p>
+             )}
           </CardContent>
         </Card>
 
@@ -411,5 +446,3 @@ export default function DashboardPage() {
     </AppLayout>
   );
 }
-
-    
