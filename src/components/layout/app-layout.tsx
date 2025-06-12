@@ -26,7 +26,7 @@ export function AppLayout({ children }: AppLayoutProps) {
             <Button variant="ghost" size="icon" className="h-8 w-8 text-primary">
               <Package2 className="h-6 w-6" />
             </Button>
-            <span className="font-headline text-lg font-semibold text-primary">MenuSage</span>
+            <span className="font-headline text-lg font-semibold text-primary">SODISEN</span>
            </div>
           {/* SidebarTrigger is often placed in the header for mobile, but can be here for desktop expand/collapse if needed or used by SidebarRail */}
         </SidebarHeader>
