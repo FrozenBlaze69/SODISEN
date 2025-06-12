@@ -27,7 +27,7 @@ export function Header() {
       </div>
       <div className="flex flex-1 items-center">
         <Link href="/" className="mr-auto">
-          <h1 className="text-2xl font-headline font-semibold text-primary">MenuSage</h1>
+          <h1 className="text-2xl font-headline font-semibold text-primary">SODISEN</h1>
         </Link>
       </div>
       <div className="flex items-center gap-4">
