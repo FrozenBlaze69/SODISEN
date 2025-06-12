@@ -1,0 +1,135 @@
+import { AppLayout } from '@/components/layout/app-layout';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import type { Resident, AttendanceRecord } from '@/types';
+import { Save, Undo, ChevronLeft, ChevronRight } from 'lucide-react';
+import Image from 'next/image';
+
+// Mock Data
+const mockResidents: Resident[] = [
+  { id: '1', firstName: 'Jean', lastName: 'Dupont', roomNumber: '101A', dietaryRestrictions: ['Sans sel'], allergies: ['Arachides'], medicalSpecificities: 'Diabète', isActive: true, avatarUrl: 'https://placehold.co/40x40.png' },
+  { id: '2', firstName: 'Aline', lastName: 'Martin', roomNumber: '102B', dietaryRestrictions: ['Mixé'], allergies: [], medicalSpecificities: 'AVC récent', isActive: true, avatarUrl: 'https://placehold.co/40x40.png' },
+  { id: '3', firstName: 'Pierre', lastName: 'Durand', roomNumber: '205A', dietaryRestrictions: ['Végétarien'], allergies: ['Gluten'], medicalSpecificities: '', isActive: true, avatarUrl: 'https://placehold.co/40x40.png' },
+];
+
+// Assume today's date for attendance
+const today = new Date().toISOString().split('T')[0];
+
+const mockAttendanceRecords: AttendanceRecord[] = [
+  { id: 'ar1', residentId: '1', date: today, mealType: 'breakfast', status: 'present' },
+  { id: 'ar2', residentId: '1', date: today, mealType: 'lunch', status: 'present' },
+  { id: 'ar3', residentId: '1', date: today, mealType: 'dinner', status: 'absent', notes: "Chez sa fille" },
+  { id: 'ar4', residentId: '2', date: today, mealType: 'breakfast', status: 'present' },
+  { id: 'ar5', residentId: '2', date: today, mealType: 'lunch', status: 'absent', notes: "Rdv médecin" },
+  { id: 'ar6', residentId: '2', date: today, mealType: 'dinner', status: 'present' },
+  { id: 'ar7', residentId: '3', date: today, mealType: 'breakfast', status: 'present' },
+  { id: 'ar8', residentId: '3', date: today, mealType: 'lunch', status: 'present' },
+  { id: 'ar9', residentId: '3', date: today, mealType: 'dinner', status: 'present' },
+];
+
+
+export default function AttendancePage() {
+  const mealTypes: Array<AttendanceRecord['mealType']> = ['breakfast', 'lunch', 'dinner'];
+
+  const getResidentAttendanceForMeal = (residentId: string, mealType: AttendanceRecord['mealType']): AttendanceRecord['status'] => {
+    return mockAttendanceRecords.find(ar => ar.residentId === residentId && ar.mealType === mealType && ar.date === today)?.status || 'present';
+  }
+
+  return (
+    <AppLayout>
+      <div className="space-y-6">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <h1 className="text-3xl font-headline font-semibold text-foreground">Suivi des Présences</h1>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="icon"><ChevronLeft className="h-4 w-4"/></Button>
+            <Select defaultValue={today}>
+              <SelectTrigger className="w-[180px] font-body">
+                <SelectValue placeholder="Choisir une date" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={today}>{new Date(today).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}</SelectItem>
+                {/* Add more dates if needed */}
+              </SelectContent>
+            </Select>
+            <Button variant="outline" size="icon"><ChevronRight className="h-4 w-4"/></Button>
+          </div>
+          <div className="flex gap-2">
+             <Button variant="outline" className="font-body">
+              <Undo className="mr-2 h-5 w-5" />
+              Annuler Modifications
+            </Button>
+            <Button className="font-body bg-accent text-accent-foreground hover:bg-accent/90">
+              <Save className="mr-2 h-5 w-5" />
+              Enregistrer Présences
+            </Button>
+          </div>
+        </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="font-headline">Grille des Présences du {new Date(today).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}</CardTitle>
+            <CardDescription className="font-body">
+              Cochez les cases pour marquer les présences/absences des résidents pour chaque repas.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="font-headline sticky left-0 bg-card z-10">Résident</TableHead>
+                    {mealTypes.map(mealType => (
+                      <TableHead key={mealType} className="text-center font-headline">
+                        {mealType === 'breakfast' ? 'P. Déj.' : mealType === 'lunch' ? 'Déjeuner' : 'Dîner'}
+                      </TableHead>
+                    ))}
+                     <TableHead className="font-headline text-center">Notes (si absence/externe)</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {mockResidents.filter(r => r.isActive).map((resident) => (
+                    <TableRow key={resident.id} className="font-body">
+                      <TableCell className="font-medium sticky left-0 bg-card z-10">
+                        <div className="flex items-center gap-2">
+                          <Image 
+                            src={resident.avatarUrl || "https://placehold.co/32x32.png"} 
+                            alt={`${resident.firstName} ${resident.lastName}`} 
+                            width={32} 
+                            height={32} 
+                            className="rounded-full"
+                            data-ai-hint="person avatar"
+                          />
+                           <span>{resident.lastName}, {resident.firstName}</span>
+                        </div>
+                      </TableCell>
+                      {mealTypes.map(mealType => (
+                        <TableCell key={mealType} className="text-center">
+                          <Select defaultValue={getResidentAttendanceForMeal(resident.id, mealType)}>
+                            <SelectTrigger className="w-[120px] mx-auto">
+                              <SelectValue/>
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="present">Présent</SelectItem>
+                              <SelectItem value="absent">Absent</SelectItem>
+                              <SelectItem value="external">Extérieur</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
+                      ))}
+                      <TableCell className="text-center">
+                         <input type="text" placeholder="Motif..." className="p-2 border rounded-md w-full text-sm" defaultValue={mockAttendanceRecords.find(ar => ar.residentId === resident.id && ar.status !== 'present' && ar.date === today)?.notes || ''}/>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </AppLayout>
+  );
+}

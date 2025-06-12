@@ -1,0 +1,101 @@
+import { AppLayout } from '@/components/layout/app-layout';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import type { Notification } from '@/types';
+import { AlertTriangle, CheckCircle2, Info, Bell, Trash2, Eye } from 'lucide-react';
+
+// Mock Data for Notifications
+const mockNotifications: Notification[] = [
+  { id: '1', timestamp: new Date(Date.now() - 3600000).toISOString(), type: 'absence', title: 'Absence Imprévue', message: 'Paul Martin ne prendra pas son repas ce midi (Raison: RDV médical).', isRead: false, relatedResidentId: '1' },
+  { id: '2', timestamp: new Date(Date.now() - 7200000).toISOString(), type: 'outing', title: 'Sortie Extérieure', message: 'Paola Leroy déjeune en famille ce midi.', isRead: true, relatedResidentId: '2' },
+  { id: '3', timestamp: new Date(Date.now() - 10800000).toISOString(), type: 'info', title: 'Présence Confirmée', message: 'Tous les résidents de l\'étage A sont présents pour le déjeuner.', isRead: true },
+  { id: '4', timestamp: new Date(Date.now() - 86400000).toISOString(), type: 'allergy_alert', title: 'Alerte Allergie Cuisine', message: 'Attention: Jean Dupont est allergique aux arachides. Vérifiez la préparation du plat n°3.', isRead: false },
+  { id: '5', timestamp: new Date(Date.now() - 172800000).toISOString(), type: 'emergency', title: 'URGENCE MÉDICALE', message: 'Chute de Mme. Petit dans la chambre 203. Intervention infirmière en cours.', isRead: true },
+  { id: '6', timestamp: new Date(Date.now() - 259200000).toISOString(), type: 'info', title: 'Menu de la semaine publié', message: 'Le menu de la semaine prochaine est disponible pour consultation.', isRead: true },
+];
+
+
+export default function NotificationsPage() {
+  const getNotificationIcon = (type: Notification['type']) => {
+    switch (type) {
+      case 'allergy_alert':
+      case 'emergency':
+        return <AlertTriangle className="h-6 w-6 text-destructive" />;
+      case 'absence':
+      case 'outing':
+        return <Info className="h-6 w-6 text-yellow-500" />;
+      default:
+        return <CheckCircle2 className="h-6 w-6 text-green-500" />;
+    }
+  };
+
+  return (
+    <AppLayout>
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h1 className="text-3xl font-headline font-semibold text-foreground">Historique des Notifications</h1>
+          <div className="flex gap-2">
+            <Button variant="outline" className="font-body">
+              <Eye className="mr-2 h-4 w-4"/>Marquer tout comme lu
+            </Button>
+            <Button variant="destructive" className="font-body">
+              <Trash2 className="mr-2 h-4 w-4"/>Supprimer les lues
+            </Button>
+          </div>
+        </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="font-headline">Toutes les Notifications</CardTitle>
+            <CardDescription className="font-body">
+              Consultez l'historique de toutes les alertes et informations.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {mockNotifications.length === 0 ? (
+              <div className="text-center py-10 text-muted-foreground font-body">
+                <Bell className="h-12 w-12 mx-auto mb-4" />
+                <p>Aucune notification pour le moment.</p>
+              </div>
+            ) : (
+              mockNotifications.map(notif => (
+                <div 
+                  key={notif.id} 
+                  className={`flex items-start gap-4 p-4 rounded-lg border transition-all hover:shadow-md ${
+                    !notif.isRead ? 'bg-primary/5 border-primary/50' : 'bg-card'
+                  }`}
+                >
+                  <div className="flex-shrink-0 pt-1">{getNotificationIcon(notif.type)}</div>
+                  <div className="flex-grow">
+                    <div className="flex justify-between items-start">
+                      <h3 className={`font-semibold font-body ${!notif.isRead ? 'text-primary' : ''}`}>{notif.title}</h3>
+                      <span className={`text-xs font-body ${!notif.isRead ? 'text-primary/80' : 'text-muted-foreground'}`}>
+                        {new Date(notif.timestamp).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}
+                      </span>
+                    </div>
+                    <p className={`text-sm font-body ${!notif.isRead ? 'text-foreground' : 'text-muted-foreground'}`}>
+                      {notif.message}
+                    </p>
+                    {notif.relatedResidentId && (
+                       <p className="text-xs mt-1 font-body">
+                         <span className="text-muted-foreground">Résident concerné: </span>
+                         <Button variant="link" className="p-0 h-auto text-xs text-primary font-body">
+                            {mockNotifications.find(n=>n.id === notif.relatedResidentId)?.title || 'Voir profil'}
+                         </Button>
+                       </p>
+                    )}
+                  </div>
+                  {!notif.isRead && (
+                    <Button variant="ghost" size="sm" className="flex-shrink-0 text-xs font-body">
+                        Marquer lu
+                    </Button>
+                  )}
+                </div>
+              ))
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </AppLayout>
+  );
+}
