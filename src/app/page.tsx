@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { AppLayout } from '@/components/layout/app-layout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -10,9 +10,12 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import type { Notification, Resident, AttendanceRecord, Meal } from '@/types';
-import { AlertTriangle, CheckCircle2, Info, Users, UtensilsCrossed, BellRing, ClipboardCheck } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Info, Users, UtensilsCrossed, BellRing, ClipboardCheck, Upload } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
+import { Input } from '@/components/ui/input';
+import { useToast } from "@/hooks/use-toast";
+import { handleMenuUpload } from './actions';
 
 // Mock Data
 const today = new Date().toISOString().split('T')[0];
@@ -62,6 +65,8 @@ const getPreparationTypeForResident = (resident: Resident): PreparationType => {
 
 export default function DashboardPage() {
   const [mealPreparationStatus, setMealPreparationStatus] = useState<Record<string, boolean>>({});
+  const { toast } = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const presentResidentAttendances = useMemo(() => {
     return mockAttendance.filter(a => a.mealType === 'lunch' && a.status === 'present');
@@ -126,12 +131,9 @@ export default function DashboardPage() {
         const isResidentVegetarian = resident.dietaryRestrictions.includes('Végétarien');
         const isMealVegetarian = meal.dietTags?.includes('Végétarien');
         
-        // Basic filtering: if resident is vegetarian, they only get vegetarian meals (unless starter/dessert which are often flexible)
         if (isResidentVegetarian && !isMealVegetarian && meal.category === 'main') {
           return; 
         }
-        // If meal is vegetarian and resident is not, they can still have it (e.g. veggie soup for everyone)
-        // This logic can be further refined if specific meals are *only* for vegetarians
 
         const prepType = getPreparationTypeForResident(resident);
         details[meal.id][prepType]++;
@@ -139,6 +141,60 @@ export default function DashboardPage() {
     });
     return details;
   }, [presentResidents]);
+
+  const onFileUpload = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    const file = formData.get('menuFile') as File;
+
+    if (!file || file.size === 0) {
+      toast({
+        variant: "destructive",
+        title: "Aucun fichier sélectionné",
+        description: "Veuillez sélectionner un fichier Excel à importer.",
+      });
+      return;
+    }
+    
+    // Limit to Excel files
+    if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls')) {
+        toast({
+            variant: "destructive",
+            title: "Type de fichier invalide",
+            description: "Veuillez sélectionner un fichier Excel (.xlsx ou .xls).",
+        });
+        return;
+    }
+
+    try {
+      const result = await handleMenuUpload(formData);
+      if (result.success) {
+        toast({
+          title: "Importation réussie",
+          description: result.message,
+        });
+        // Reset file input
+        if (fileInputRef.current) {
+          fileInputRef.current.value = "";
+        }
+        // Here you would typically refresh the menu data or update state
+        // For now, we just show a success message.
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Échec de l'importation",
+          description: result.message || "Une erreur est survenue.",
+        });
+      }
+    } catch (error) {
+      console.error("Upload error:", error);
+      toast({
+        variant: "destructive",
+        title: "Erreur d'importation",
+        description: "Une erreur inattendue est survenue lors de l'importation du fichier.",
+      });
+    }
+  };
   
   return (
     <AppLayout>
@@ -188,12 +244,26 @@ export default function DashboardPage() {
 
         <Card>
           <CardHeader>
-            <div className="flex items-center gap-2">
-              <ClipboardCheck className="h-6 w-6 text-primary" />
-              <CardTitle className="font-headline">Suivi Préparation Repas (Déjeuner)</CardTitle>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-2">
+                    <ClipboardCheck className="h-6 w-6 text-primary" />
+                    <CardTitle className="font-headline">Suivi Préparation Repas (Déjeuner)</CardTitle>
+                </div>
+                <form onSubmit={onFileUpload} className="flex items-center gap-2">
+                    <Input
+                      ref={fileInputRef}
+                      type="file"
+                      name="menuFile"
+                      accept=".xlsx, .xls"
+                      className="font-body text-sm file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
+                    />
+                    <Button type="submit" size="sm" className="font-body">
+                        <Upload className="mr-2 h-4 w-4" /> Importer
+                    </Button>
+                </form>
             </div>
-            <CardDescription className="font-body">
-              Détail des préparations pour les résidents présents. Cochez si prêt.
+            <CardDescription className="font-body mt-2">
+              Détail des préparations pour les résidents présents. Cochez si prêt. Importez un fichier Excel pour mettre à jour le menu.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -342,3 +412,4 @@ export default function DashboardPage() {
   );
 }
 
+    
