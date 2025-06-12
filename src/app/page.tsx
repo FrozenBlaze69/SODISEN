@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { AppLayout } from '@/components/layout/app-layout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -15,45 +15,73 @@ import Image from 'next/image';
 import Link from 'next/link';
 
 // Mock Data
+const today = new Date().toISOString().split('T')[0];
+
 const mockResidents: Resident[] = [
-  { id: '1', firstName: 'Jean', lastName: 'Dupont', dietaryRestrictions: ['Sans sel'], allergies: ['Arachides'], medicalSpecificities: 'Diabète type 2', isActive: true, avatarUrl: 'https://placehold.co/40x40.png' },
-  { id: '2', firstName: 'Marie', lastName: 'Curie', dietaryRestrictions: ['Végétarien'], allergies: [], medicalSpecificities: 'Hypertension', isActive: true, avatarUrl: 'https://placehold.co/40x40.png' },
+  { id: '1', firstName: 'Jean', lastName: 'Dupont', roomNumber: '101A', dietaryRestrictions: ['Sans sel'], allergies: ['Arachides'], medicalSpecificities: 'Diabète type 2', isActive: true, avatarUrl: 'https://placehold.co/40x40.png' },
+  { id: '2', firstName: 'Marie', lastName: 'Curie', roomNumber: '102B', dietaryRestrictions: ['Végétarien', 'Mixé'], allergies: [], medicalSpecificities: 'Hypertension', isActive: true, avatarUrl: 'https://placehold.co/40x40.png' },
+  { id: '3', firstName: 'Pierre', lastName: 'Gagnon', roomNumber: '103C', dietaryRestrictions: ['Haché'], allergies: ['Gluten'], medicalSpecificities: '', isActive: true, avatarUrl: 'https://placehold.co/40x40.png' },
+  { id: '4', firstName: 'Lucie', lastName: 'Tremblay', roomNumber: '201A', dietaryRestrictions: [], allergies: [], medicalSpecificities: '', isActive: true, avatarUrl: 'https://placehold.co/40x40.png' },
+  { id: '5', firstName: 'Ahmed', lastName: 'Benali', roomNumber: '202B', dietaryRestrictions: ['Mixé', 'Sans porc'], allergies: [], medicalSpecificities: 'Difficultés de déglutition', isActive: true, avatarUrl: 'https://placehold.co/40x40.png' },
+  { id: '6', firstName: 'Sophie', lastName: 'Petit', roomNumber: '203C', dietaryRestrictions: ['Diabétique'], allergies: [], medicalSpecificities: '', isActive: true, avatarUrl: 'https://placehold.co/40x40.png' },
 ];
 
 const mockAttendance: AttendanceRecord[] = [
-  { id: 'att1', residentId: '1', date: new Date().toISOString().split('T')[0], mealType: 'lunch', status: 'present' },
-  { id: 'att2', residentId: '2', date: new Date().toISOString().split('T')[0], mealType: 'lunch', status: 'absent', notes: 'Rendez-vous médical' },
+  { id: 'att1', residentId: '1', date: today, mealType: 'lunch', status: 'present' },
+  { id: 'att2', residentId: '2', date: today, mealType: 'lunch', status: 'present' },
+  { id: 'att3', residentId: '3', date: today, mealType: 'lunch', status: 'present' },
+  { id: 'att4', residentId: '4', date: today, mealType: 'lunch', status: 'present' },
+  { id: 'att5', residentId: '5', date: today, mealType: 'lunch', status: 'present' },
+  { id: 'att6', residentId: '6', date: today, mealType: 'lunch', status: 'absent', notes: 'Rendez-vous coiffeur' }, // Sophie is absent
 ];
 
 const mockMealsToday: Meal[] = [
-  { id: 's1', name: 'Velouté de Légumes de Saison', category: 'starter', dietTags: ['Normal', 'Végétarien'], allergenTags: ['Céleri'] },
-  { id: 's2', name: 'Salade de Chèvre Chaud', category: 'starter', dietTags: ['Normal'], allergenTags: ['Gluten', 'Lactose'] },
-  { id: 'm1', name: 'Poulet Rôti et Gratin Dauphinois', category: 'main', dietTags: ['Normal'], allergenTags: ['Lactose'] },
-  { id: 'm2', name: 'Filet de Colin, Riz et Petits Légumes', category: 'main', dietTags: ['Sans Sel'], allergenTags: [] },
-  { id: 'm3', name: 'Lasagnes Végétariennes', category: 'main', dietTags: ['Végétarien'], allergenTags: ['Gluten', 'Lactose'] },
-  { id: 'd1', name: 'Mousse au Chocolat Maison', category: 'dessert', dietTags: ['Normal'], allergenTags: ['Oeuf', 'Lactose'] },
-  { id: 'd2', name: 'Salade de Fruits Frais', category: 'dessert', dietTags: ['Normal', 'Végétarien', 'Sans Sel'], allergenTags: [] },
+  { id: 's1', name: 'Velouté de Carottes au Cumin', category: 'starter', dietTags: ['Végétarien', 'Sans Sel'], allergenTags: [] },
+  { id: 's2', name: 'Salade Composée du Chef', category: 'starter', dietTags: [], allergenTags: ['Gluten'] },
+  { id: 'm1', name: 'Boeuf Bourguignon Traditionnel', category: 'main', dietTags: [], allergenTags: [] },
+  { id: 'm2', name: 'Filet de Cabillaud Vapeur, Sauce Citronnée', category: 'main', dietTags: ['Sans Sel'], allergenTags: [] },
+  { id: 'm3', name: 'Curry de Légumes aux Lentilles Corail', category: 'main', dietTags: ['Végétarien'], allergenTags: [] },
+  { id: 'd1', name: 'Crème Caramel Maison', category: 'dessert', dietTags: [], allergenTags: ['Oeuf', 'Lactose'] },
+  { id: 'd2', name: 'Compote de Pommes Cannelle', category: 'dessert', dietTags: ['Végétarien', 'Sans Sel'], allergenTags: [] },
 ];
 
 
 const mockNotifications: Notification[] = [
-  { id: '1', timestamp: new Date(Date.now() - 3600000).toISOString(), type: 'absence', title: 'Absence Imprévue', message: 'Paul Martin ne prendra pas son repas ce midi.', isRead: false, relatedResidentId: '1' },
-  { id: '2', timestamp: new Date(Date.now() - 7200000).toISOString(), type: 'outing', title: 'Sortie Extérieure', message: 'Paola Leroy déjeune en famille ce midi.', isRead: true, relatedResidentId: '2' },
-  { id: '3', timestamp: new Date(Date.now() - 10800000).toISOString(), type: 'info', title: 'Présence Confirmée', message: 'Tous les résidents de l\'étage A sont présents.', isRead: true },
+  { id: '1', timestamp: new Date(Date.now() - 3600000).toISOString(), type: 'absence', title: 'Absence Imprévue', message: 'Sophie Petit ne prendra pas son repas ce midi (Coiffeur).', isRead: false, relatedResidentId: '6' },
+  { id: '2', timestamp: new Date(Date.now() - 7200000).toISOString(), type: 'info', title: 'Menu Spécial Anniversaire', message: 'Le dessert "Crème Caramel" est pour l\'anniversaire de Jean Dupont.', isRead: true },
+  { id: '3', timestamp: new Date(Date.now() - 10800000).toISOString(), type: 'allergy_alert', title: 'Allergie Arachides', message: 'Attention cuisine: Jean Dupont (Ch. 101A) est allergique aux arachides. Double-vérifier les préparations.', isRead: false, relatedResidentId: '1' },
 ];
 
+type PreparationType = 'Normal' | 'Mixé' | 'Haché';
+
+const getPreparationTypeForResident = (resident: Resident): PreparationType => {
+  if (resident.dietaryRestrictions.some(r => r.toLowerCase().includes('mixé'))) return 'Mixé';
+  if (resident.dietaryRestrictions.some(r => r.toLowerCase().includes('haché'))) return 'Haché';
+  return 'Normal';
+};
 
 export default function DashboardPage() {
   const [mealPreparationStatus, setMealPreparationStatus] = useState<Record<string, boolean>>({});
 
+  const presentResidentAttendances = useMemo(() => {
+    return mockAttendance.filter(a => a.mealType === 'lunch' && a.status === 'present');
+  }, []);
+
+  const presentResidents = useMemo(() => {
+    return presentResidentAttendances
+      .map(att => mockResidents.find(r => r.id === att.residentId))
+      .filter((r): r is Resident => !!r);
+  }, [presentResidentAttendances]);
+
   const totalResidents = mockResidents.length;
-  const presentForLunch = mockAttendance.filter(a => a.mealType === 'lunch' && a.status === 'present').length;
+  const presentForLunchCount = presentResidents.length;
   
-  const totalMealsToPrepare = presentForLunch; 
-  const dietSpecificMeals = {
-    'Sans sel': mockAttendance.filter(a => a.status === 'present' && mockResidents.find(r => r.id === a.residentId)?.dietaryRestrictions.includes('Sans sel')).length,
-    'Végétarien': mockAttendance.filter(a => a.status === 'present' && mockResidents.find(r => r.id === a.residentId)?.dietaryRestrictions.includes('Végétarien')).length,
-  };
+  const dietSpecificMeals = useMemo(() => ({
+    'Sans sel': presentResidents.filter(r => r.dietaryRestrictions.includes('Sans sel')).length,
+    'Végétarien': presentResidents.filter(r => r.dietaryRestrictions.includes('Végétarien')).length,
+    'Mixé': presentResidents.filter(r => getPreparationTypeForResident(r) === 'Mixé').length,
+    'Haché': presentResidents.filter(r => getPreparationTypeForResident(r) === 'Haché').length,
+  }), [presentResidents]);
 
   const getNotificationIcon = (type: Notification['type']) => {
     switch (type) {
@@ -68,18 +96,18 @@ export default function DashboardPage() {
     }
   };
 
-  const handleMealStatusChange = (mealId: string, isReady: boolean) => {
-    setMealPreparationStatus(prev => ({ ...prev, [mealId]: isReady }));
+  const handleMealStatusChange = (mealPrepKey: string, isReady: boolean) => {
+    setMealPreparationStatus(prev => ({ ...prev, [mealPrepKey]: isReady }));
   };
 
-  const categorizedMeals: Record<string, Meal[]> = mockMealsToday.reduce((acc, meal) => {
-    const category = meal.category;
-    if (!acc[category]) {
-      acc[category] = [];
-    }
-    acc[category].push(meal);
-    return acc;
-  }, {} as Record<string, Meal[]>);
+  const categorizedMeals: Record<string, Meal[]> = useMemo(() => 
+    mockMealsToday.reduce((acc, meal) => {
+      const category = meal.category;
+      if (!acc[category]) acc[category] = [];
+      acc[category].push(meal);
+      return acc;
+    }, {} as Record<string, Meal[]>), 
+  []);
 
   const categoryOrder: Meal['category'][] = ['starter', 'main', 'dessert', 'snack', 'drink'];
   const categoryLabels: Record<Meal['category'], string> = {
@@ -89,6 +117,28 @@ export default function DashboardPage() {
     snack: 'Collations',
     drink: 'Boissons',
   };
+
+  const mealPreparationDetails = useMemo(() => {
+    const details: Record<string, Record<PreparationType, number>> = {};
+    mockMealsToday.forEach(meal => {
+      details[meal.id] = { 'Normal': 0, 'Mixé': 0, 'Haché': 0 };
+      presentResidents.forEach(resident => {
+        const isResidentVegetarian = resident.dietaryRestrictions.includes('Végétarien');
+        const isMealVegetarian = meal.dietTags?.includes('Végétarien');
+        
+        // Basic filtering: if resident is vegetarian, they only get vegetarian meals (unless starter/dessert which are often flexible)
+        if (isResidentVegetarian && !isMealVegetarian && meal.category === 'main') {
+          return; 
+        }
+        // If meal is vegetarian and resident is not, they can still have it (e.g. veggie soup for everyone)
+        // This logic can be further refined if specific meals are *only* for vegetarians
+
+        const prepType = getPreparationTypeForResident(resident);
+        details[meal.id][prepType]++;
+      });
+    });
+    return details;
+  }, [presentResidents]);
   
   return (
     <AppLayout>
@@ -104,7 +154,7 @@ export default function DashboardPage() {
             <CardContent>
               <div className="text-2xl font-bold font-body">{totalResidents}</div>
               <p className="text-xs text-muted-foreground font-body">
-                {presentForLunch} présents au déjeuner d'aujourd'hui
+                {presentForLunchCount} présents au déjeuner d'aujourd'hui
               </p>
             </CardContent>
           </Card>
@@ -115,9 +165,9 @@ export default function DashboardPage() {
               <UtensilsCrossed className="h-5 w-5 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold font-body">{totalMealsToPrepare}</div>
+              <div className="text-2xl font-bold font-body">{presentForLunchCount}</div>
               <p className="text-xs text-muted-foreground font-body">
-                {dietSpecificMeals['Sans sel']} sans sel, {dietSpecificMeals['Végétarien']} végétariens
+                {dietSpecificMeals['Sans sel']} sans sel, {dietSpecificMeals['Végétarien']} végé., {dietSpecificMeals['Mixé']} mixés, {dietSpecificMeals['Haché']} hachés
               </p>
             </CardContent>
           </Card>
@@ -143,40 +193,61 @@ export default function DashboardPage() {
               <CardTitle className="font-headline">Suivi Préparation Repas (Déjeuner)</CardTitle>
             </div>
             <CardDescription className="font-body">
-              Cochez les plats prêts. Portions indicatives pour {presentForLunch} présents.
+              Détail des préparations pour les résidents présents. Cochez si prêt.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             {categoryOrder.map(category => {
               const mealsInCategory = categorizedMeals[category];
-              if (!mealsInCategory || mealsInCategory.length === 0) {
-                return null;
-              }
+              if (!mealsInCategory || mealsInCategory.length === 0) return null;
+              
+              const categoryHasContent = mealsInCategory.some(meal => 
+                Object.values(mealPreparationDetails[meal.id]).some(count => count > 0)
+              );
+              if (!categoryHasContent) return null;
+
               return (
                 <div key={category}>
                   <h3 className="text-lg font-semibold font-body text-primary mb-3 border-b pb-2">{categoryLabels[category]}</h3>
-                  <div className="space-y-3">
-                    {mealsInCategory.map(meal => (
-                      <div key={meal.id} className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-muted/50 transition-colors">
-                        <div className="flex items-center gap-3">
-                          <Checkbox
-                            id={`meal-prep-${meal.id}`}
-                            checked={!!mealPreparationStatus[meal.id]}
-                            onCheckedChange={(checked) => handleMealStatusChange(meal.id, !!checked)}
-                            aria-label={`Marquer ${meal.name} comme prêt`}
-                          />
-                          <Label htmlFor={`meal-prep-${meal.id}`} className="font-body text-sm cursor-pointer">
-                            {meal.name}
-                          </Label>
+                  <div className="space-y-4">
+                    {mealsInCategory.map(meal => {
+                      const preparations = mealPreparationDetails[meal.id];
+                      const hasPreparationsForThisMeal = Object.values(preparations).some(count => count > 0);
+                      if (!hasPreparationsForThisMeal) return null;
+
+                      return (
+                        <div key={meal.id} className="p-3 rounded-lg border bg-card hover:bg-muted/50 transition-colors">
+                          <p className="font-semibold font-body text-md mb-2">{meal.name}</p>
+                          <div className="space-y-2 pl-4">
+                            {(Object.keys(preparations) as PreparationType[]).map(prepType => {
+                              const count = preparations[prepType];
+                              if (count === 0) return null;
+                              const mealPrepKey = `meal-${meal.id}-prep-${prepType}`;
+                              return (
+                                <div key={mealPrepKey} className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    <Checkbox
+                                      id={mealPrepKey}
+                                      checked={!!mealPreparationStatus[mealPrepKey]}
+                                      onCheckedChange={(checked) => handleMealStatusChange(mealPrepKey, !!checked)}
+                                      aria-label={`Marquer ${meal.name} (${prepType}) comme prêt`}
+                                    />
+                                    <Label htmlFor={mealPrepKey} className="font-body text-sm cursor-pointer">
+                                      {prepType}: <span className="font-semibold">{count} portion{count > 1 ? 's' : ''}</span>
+                                    </Label>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
                         </div>
-                        <Badge variant="outline" className="font-body text-xs">{presentForLunch} portions</Badge>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               );
             })}
-            {Object.keys(categorizedMeals).length === 0 && mockMealsToday.length === 0 && (
+            {mockMealsToday.length === 0 && (
                 <p className="text-muted-foreground font-body text-center py-4">Aucun plat programmé pour ce service.</p>
             )}
           </CardContent>
@@ -198,7 +269,7 @@ export default function DashboardPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {mockAttendance.slice(0,3).map(att => {
+                  {presentResidentAttendances.slice(0,3).map(att => {
                     const resident = mockResidents.find(r => r.id === att.residentId);
                     return (
                       <TableRow key={att.id} className="font-body">
@@ -215,6 +286,23 @@ export default function DashboardPage() {
                       </TableRow>
                     );
                   })}
+                   {mockAttendance.filter(att => att.status === 'absent' && att.mealType === 'lunch').slice(0,1).map(att => {
+                     const resident = mockResidents.find(r => r.id === att.residentId);
+                     return (
+                      <TableRow key={`absent-${att.id}`} className="font-body opacity-70">
+                        <TableCell className="flex items-center gap-2">
+                           <Image src={resident?.avatarUrl || "https://placehold.co/40x40.png"} alt={resident?.firstName || ""} width={24} height={24} className="rounded-full" data-ai-hint="person avatar" />
+                          {resident ? `${resident.firstName} ${resident.lastName}` : 'N/A'}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={'destructive'}>
+                            Absent(e)
+                          </Badge>
+                        </TableCell>
+                        <TableCell>{att.notes || '-'}</TableCell>
+                      </TableRow>
+                     );
+                   })}
                 </TableBody>
               </Table>
               <div className="mt-4">
@@ -253,3 +341,4 @@ export default function DashboardPage() {
     </AppLayout>
   );
 }
+
