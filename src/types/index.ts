@@ -1,20 +1,21 @@
 
 export interface Resident {
   id: string;
-  firstName: string; // Sera utilisé comme 'nom' pour la nouvelle fonctionnalité
+  firstName: string;
   lastName: string;
-  dateOfBirth?: string;
+  dateOfBirth?: string; // Format YYYY-MM-DD ou laisser en string simple pour l'instant
   roomNumber?: string;
-  dietaryRestrictions: string[];
+  // dietaryRestrictions: string[]; // Redondant avec diets, on utilisera diets
   allergies: string[];
-  medicalSpecificities: string;
+  medicalSpecificities: string; // Champ texte libre pour spécificités médicales
   isActive: boolean; // Statut général (actif/inactif dans l'établissement)
-  present: boolean; // Statut de présence quotidien (présent/absent pour les repas par ex.)
+  // present: boolean; // Ce champ était pour la présence quotidienne, géré ailleurs maintenant (ex: Attendance)
   avatarUrl?: string;
   unit: string;
   contraindications: string[];
   textures: string[];
   diets: string[];
+  createdAt?: any; // Pour serverTimestamp
 }
 
 export interface Meal {
@@ -40,7 +41,7 @@ export interface Menu {
   notes?: string;
 }
 
-export type AttendanceStatus = 'present' | 'absent' | 'external'; // Peut être utilisé pour une logique de présence plus détaillée
+export type AttendanceStatus = 'present' | 'absent' | 'external';
 
 export interface AttendanceRecord {
   id: string;
@@ -72,24 +73,35 @@ export interface User {
   avatarUrl?: string;
 }
 
+// Nouvelle interface pour les menus personnalisés par résident
 export interface MenuPersonalized {
-  id: string;
+  id: string; // Id du document dans Firestore
   residentId: string;
-  date: string;
-  items: Array<{ mealId: string; originalMealName: string; mealNameAdapted?: string; mealType: MealType; textureApplied: string; dietApplied: string[]; notes?: string; }>;
-  unit: string;
+  date: string; // YYYY-MM-DD
+  items: Array<{ 
+    mealId: string; 
+    originalMealName: string; // Nom du plat global
+    mealNameAdapted?: string; // Nom du plat si adapté (ex: "Steak Haché" pour "Steak Frites")
+    mealType: MealType; 
+    textureApplied: string; // Ex: "Mixé lisse", "Normal"
+    dietApplied: string[]; // Ex: ["Sans sel", "Diabétique"]
+    notes?: string; // Notes spécifiques pour la préparation de ce plat pour ce résident
+  }>;
+  unit: string; // Unité du résident au moment de la génération
 }
 
+// Nouvelle interface pour le résumé par unité destiné aux cuisiniers
 export interface UnitSummary {
   unit: string;
-  date: string;
+  date: string; // YYYY-MM-DD
   items: Array<{
-    mealId: string;
-    mealName: string;
+    mealId: string; // ID du plat global
+    mealName: string; // Nom du plat global
     mealType: MealType;
-    totalCount: number;
-    textures: Record<string, number>;
-    diets: Record<string, number>;
+    totalCount: number; // Nombre total de ce plat pour l'unité
+    textures: Record<string, number>; // ex: { "Normal": 10, "Mixé": 2 }
+    diets: Record<string, number>; // ex: { "Sans Sel": 5, "Végétarien": 1 }
+    // On pourrait ajouter ici les noms adaptés si besoin, ou les gérer au niveau MenuPersonalized
   }>;
-  notes?: string;
+  notes?: string; // Notes générales pour l'unité pour cette date
 }
