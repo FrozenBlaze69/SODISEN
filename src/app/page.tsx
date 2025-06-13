@@ -8,23 +8,22 @@ import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import type { Notification, Resident, AttendanceRecord, Meal } from '@/types';
-import { AlertTriangle, CheckCircle2, Info, Users, UtensilsCrossed, BellRing, ClipboardCheck, Upload, Plus, Minus } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Info, Users, UtensilsCrossed, BellRing, ClipboardCheck, Upload, Plus, Minus, Building } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { Input } from '@/components/ui/input';
 import { useToast } from "@/hooks/use-toast";
 import { handleMenuUpload } from './actions';
 
-// Mock Data
 const today = new Date().toISOString().split('T')[0]; 
 
 const mockResidents: Resident[] = [
-  { id: '1', firstName: 'Jean', lastName: 'Dupont', roomNumber: '101A', dietaryRestrictions: ['Sans sel'], allergies: ['Arachides'], medicalSpecificities: 'Diabète type 2', isActive: true, avatarUrl: 'https://placehold.co/40x40.png' },
-  { id: '2', firstName: 'Marie', lastName: 'Curie', roomNumber: '102B', dietaryRestrictions: ['Végétarien', 'Mixé'], allergies: [], medicalSpecificities: 'Hypertension', isActive: true, avatarUrl: 'https://placehold.co/40x40.png' },
-  { id: '3', firstName: 'Pierre', lastName: 'Gagnon', roomNumber: '103C', dietaryRestrictions: ['Haché'], allergies: ['Gluten'], medicalSpecificities: '', isActive: true, avatarUrl: 'https://placehold.co/40x40.png' },
-  { id: '4', firstName: 'Lucie', lastName: 'Tremblay', roomNumber: '201A', dietaryRestrictions: [], allergies: [], medicalSpecificities: '', isActive: true, avatarUrl: 'https://placehold.co/40x40.png' },
-  { id: '5', firstName: 'Ahmed', lastName: 'Benali', roomNumber: '202B', dietaryRestrictions: ['Mixé', 'Sans porc'], allergies: [], medicalSpecificities: 'Difficultés de déglutition', isActive: true, avatarUrl: 'https://placehold.co/40x40.png' },
-  { id: '6', firstName: 'Sophie', lastName: 'Petit', roomNumber: '203C', dietaryRestrictions: ['Diabétique'], allergies: [], medicalSpecificities: '', isActive: true, avatarUrl: 'https://placehold.co/40x40.png' },
+  { id: '1', firstName: 'Jean', lastName: 'Dupont', roomNumber: '101A', dietaryRestrictions: [], allergies: ['Arachides'], medicalSpecificities: 'Diabète type 2', isActive: true, avatarUrl: 'https://placehold.co/40x40.png', unit: 'Unité A', contraindications: ['Pamplemousse'], textures: ['Normal'], diets: ['Sans sel', 'Diabétique'] },
+  { id: '2', firstName: 'Marie', lastName: 'Curie', roomNumber: '102B', dietaryRestrictions: [], allergies: [], medicalSpecificities: 'Hypertension', isActive: true, avatarUrl: 'https://placehold.co/40x40.png', unit: 'Unité A', contraindications: [], textures: ['Mixé lisse'], diets: ['Végétarien', 'Hyperprotéiné'] },
+  { id: '3', firstName: 'Pierre', lastName: 'Gagnon', roomNumber: '103C', dietaryRestrictions: [], allergies: ['Gluten'], medicalSpecificities: '', isActive: true, avatarUrl: 'https://placehold.co/40x40.png', unit: 'Unité B', contraindications: [], textures: ['Haché fin'], diets: ['Sans porc'] },
+  { id: '4', firstName: 'Lucie', lastName: 'Tremblay', roomNumber: '201A', dietaryRestrictions: [], allergies: [], medicalSpecificities: '', isActive: true, avatarUrl: 'https://placehold.co/40x40.png', unit: 'Unité A', contraindications: [], textures: ['Normal'], diets: [] },
+  { id: '5', firstName: 'Ahmed', lastName: 'Benali', roomNumber: '202B', dietaryRestrictions: [], allergies: [], medicalSpecificities: 'Difficultés de déglutition', isActive: true, avatarUrl: 'https://placehold.co/40x40.png', unit: 'Unité B', contraindications: [], textures: ['Mixé morceaux'], diets: ['Sans porc'] },
+  { id: '6', firstName: 'Sophie', lastName: 'Petit', roomNumber: '203C', dietaryRestrictions: [], allergies: [], medicalSpecificities: '', isActive: true, avatarUrl: 'https://placehold.co/40x40.png', unit: 'Unité B', contraindications: ['Soja'], textures: ['Normal'], diets: ['Diabétique'] },
 ];
 
 const mockAttendance: AttendanceRecord[] = [
@@ -37,13 +36,13 @@ const mockAttendance: AttendanceRecord[] = [
 ];
 
 const initialMockMealsToday: Meal[] = [
-  { id: 's1', name: 'Velouté de Carottes au Cumin', category: 'starter', dietTags: ['Végétarien', 'Sans Sel'], allergenTags: [], description: "Un velouté doux et parfumé, parfait pour commencer le repas." },
-  { id: 's2', name: 'Salade Composée du Chef', category: 'starter', dietTags: [], allergenTags: ['Gluten'], description: "Salade fraîcheur avec croûtons et vinaigrette maison." },
-  { id: 'm1', name: 'Boeuf Bourguignon Traditionnel', category: 'main', dietTags: [], allergenTags: [], description: "Un classique de la cuisine française, mijoté lentement." },
-  { id: 'm2', name: 'Filet de Cabillaud Vapeur, Sauce Citronnée', category: 'main', dietTags: ['Sans Sel'], allergenTags: [], description: "Poisson léger accompagné d'une sauce acidulée." },
-  { id: 'm3', name: 'Curry de Légumes aux Lentilles Corail', category: 'main', dietTags: ['Végétarien'], allergenTags: [], description: "Plat végétarien savoureux et nutritif." },
+  { id: 's1', name: 'Velouté de Carottes au Cumin', category: 'starter', dietTags: ['Végétarien', 'Sans Sel'], allergenTags: [], description: "Un velouté doux et parfumé." },
+  { id: 's2', name: 'Salade Composée du Chef', category: 'starter', dietTags: [], allergenTags: ['Gluten'], description: "Salade fraîcheur avec croûtons." },
+  { id: 'm1', name: 'Boeuf Bourguignon Traditionnel', category: 'main', dietTags: [], allergenTags: [], description: "Un classique mijoté lentement." },
+  { id: 'm2', name: 'Filet de Cabillaud Vapeur, Sauce Citronnée', category: 'main', dietTags: ['Sans Sel'], allergenTags: [], description: "Poisson léger et acidulé." },
+  { id: 'm3', name: 'Curry de Légumes aux Lentilles Corail', category: 'main', dietTags: ['Végétarien'], allergenTags: [], description: "Plat végétarien nutritif." },
   { id: 'd1', name: 'Crème Caramel Maison', category: 'dessert', dietTags: [], allergenTags: ['Oeuf', 'Lactose'], description: "Dessert onctueux et gourmand." },
-  { id: 'd2', name: 'Compote de Pommes Cannelle', category: 'dessert', dietTags: ['Végétarien', 'Sans Sel'], allergenTags: [], description: "Une compote simple et réconfortante." },
+  { id: 'd2', name: 'Compote de Pommes Cannelle', category: 'dessert', dietTags: ['Végétarien', 'Sans Sel'], allergenTags: [], description: "Compote simple et réconfortante." },
 ];
 
 const mockDateReference = new Date('2024-07-15T10:00:00.000Z');
@@ -51,15 +50,21 @@ const mockDateReference = new Date('2024-07-15T10:00:00.000Z');
 const mockNotifications: Notification[] = [
   { id: '1', timestamp: new Date(mockDateReference.getTime() - 3600000).toISOString(), type: 'absence', title: 'Absence Imprévue', message: 'Sophie Petit ne prendra pas son repas ce midi (Coiffeur).', isRead: false, relatedResidentId: '6' },
   { id: '2', timestamp: new Date(mockDateReference.getTime() - 7200000).toISOString(), type: 'info', title: 'Menu Spécial Anniversaire', message: 'Le dessert "Crème Caramel" est pour l\'anniversaire de Jean Dupont.', isRead: true },
-  { id: '3', timestamp: new Date(mockDateReference.getTime() - 10800000).toISOString(), type: 'allergy_alert', title: 'Allergie Arachides', message: 'Attention cuisine: Jean Dupont (Ch. 101A) est allergique aux arachides. Double-vérifier les préparations.', isRead: false, relatedResidentId: '1' },
+  { id: '3', timestamp: new Date(mockDateReference.getTime() - 10800000).toISOString(), type: 'allergy_alert', title: 'Allergie Arachides', message: 'Attention cuisine: Jean Dupont (Ch. 101A) est allergique aux arachides.', isRead: false, relatedResidentId: '1' },
 ];
 
-type PreparationType = 'Normal' | 'Mixé' | 'Haché';
+type PreparationType = 'Normal' | 'Mixé morceaux' | 'Mixé lisse' | 'Haché fin' | 'Haché gros';
+const ALL_PREPARATION_TYPES: PreparationType[] = ['Normal', 'Mixé morceaux', 'Mixé lisse', 'Haché fin', 'Haché gros'];
+
 
 const getPreparationTypeForResident = (resident: Resident): PreparationType => {
-  if (resident.dietaryRestrictions.some(r => r.toLowerCase().includes('mixé'))) return 'Mixé';
-  if (resident.dietaryRestrictions.some(r => r.toLowerCase().includes('haché'))) return 'Haché';
-  return 'Normal';
+  // This logic might need to be more sophisticated based on resident.textures
+  if (resident.textures.some(t => t.toLowerCase().includes('mixé lisse'))) return 'Mixé lisse';
+  if (resident.textures.some(t => t.toLowerCase().includes('mixé morceaux'))) return 'Mixé morceaux';
+  if (resident.textures.some(t => t.toLowerCase().includes('haché fin'))) return 'Haché fin';
+  if (resident.textures.some(t => t.toLowerCase().includes('haché gros'))) return 'Haché gros';
+  if (resident.textures.some(t => t.toLowerCase().includes('normal'))) return 'Normal';
+  return 'Normal'; // Default
 };
 
 export default function DashboardPage() {
@@ -81,21 +86,46 @@ export default function DashboardPage() {
     return mockAttendance.filter(a => a.mealType === 'lunch' && a.status === 'present');
   }, []);
 
-  const presentResidents = useMemo(() => {
-    return presentResidentAttendances
-      .map(att => mockResidents.find(r => r.id === att.residentId))
+  const activeResidents = useMemo(() => mockResidents.filter(r => r.isActive), []);
+
+  const residentsByUnit = useMemo(() => {
+    return activeResidents.reduce((acc, resident) => {
+      const unit = resident.unit || 'Non spécifiée';
+      if (!acc[unit]) {
+        acc[unit] = [];
+      }
+      acc[unit].push(resident);
+      return acc;
+    }, {} as Record<string, Resident[]>);
+  }, [activeResidents]);
+  
+  const presentResidentsByUnit = useMemo(() => {
+    const units: Record<string, Resident[]> = {};
+    for (const unitName in residentsByUnit) {
+        units[unitName] = residentsByUnit[unitName].filter(resident => 
+            presentResidentAttendances.some(att => att.residentId === resident.id)
+        );
+    }
+    return units;
+  }, [residentsByUnit, presentResidentAttendances]);
+
+
+  const totalResidents = activeResidents.length;
+  const presentForLunchCount = presentResidentAttendances.length;
+
+  const dietSpecificMeals = useMemo(() => {
+    const presentRes = presentResidentAttendances
+      .map(att => activeResidents.find(r => r.id === att.residentId))
       .filter((r): r is Resident => !!r);
-  }, [presentResidentAttendances]);
+    
+    return {
+    'Sans sel': presentRes.filter(r => r.diets.includes('Sans sel')).length,
+    'Végétarien': presentRes.filter(r => r.diets.includes('Végétarien')).length,
+    'Mixé': presentRes.filter(r => getPreparationTypeForResident(r).startsWith('Mixé')).length,
+    'Haché': presentRes.filter(r => getPreparationTypeForResident(r).startsWith('Haché')).length,
+    };
+  }, [presentResidentAttendances, activeResidents]);
 
-  const totalResidents = mockResidents.length;
-  const presentForLunchCount = presentResidents.length;
-
-  const dietSpecificMeals = useMemo(() => ({
-    'Sans sel': presentResidents.filter(r => r.dietaryRestrictions.includes('Sans sel')).length,
-    'Végétarien': presentResidents.filter(r => r.dietaryRestrictions.includes('Végétarien')).length,
-    'Mixé': presentResidents.filter(r => getPreparationTypeForResident(r) === 'Mixé').length,
-    'Haché': presentResidents.filter(r => getPreparationTypeForResident(r) === 'Haché').length,
-  }), [presentResidents]);
 
   const getNotificationIcon = (type: Notification['type']) => {
     switch (type) {
@@ -128,75 +158,98 @@ export default function DashboardPage() {
     drink: 'Boissons',
   };
 
-  const mealPreparationDetails = useMemo(() => {
-    const details: Record<string, Record<PreparationType, number>> = {};
-    mealsToDisplay.forEach(meal => {
-      details[meal.id] = { 'Normal': 0, 'Mixé': 0, 'Haché': 0 };
-      presentResidents.forEach(resident => {
-        const isResidentVegetarian = resident.dietaryRestrictions.includes('Végétarien');
-        const isMealVegetarian = meal.dietTags?.includes('Végétarien');
+  const mealPreparationDetailsByUnit = useMemo(() => {
+    const detailsByUnit: Record<string, Record<string, Record<PreparationType, number>>> = {};
 
-        if (isResidentVegetarian && !isMealVegetarian && meal.category === 'main') {
-          const vegMain = mealsToDisplay.find(m => m.category === 'main' && m.dietTags?.includes('Végétarien'));
-          if (vegMain && vegMain.id !== meal.id) return;
+    Object.keys(presentResidentsByUnit).forEach(unitName => {
+      detailsByUnit[unitName] = {};
+      const residentsInUnit = presentResidentsByUnit[unitName];
+
+      mealsToDisplay.forEach(meal => {
+        if (!detailsByUnit[unitName][meal.id]) {
+            detailsByUnit[unitName][meal.id] = {} as Record<PreparationType, number>;
+            ALL_PREPARATION_TYPES.forEach(pt => detailsByUnit[unitName][meal.id][pt] = 0);
         }
-
-        if (meal.allergenTags && meal.allergenTags.some(allergen => resident.allergies.includes(allergen))) {
+        
+        residentsInUnit.forEach(resident => {
+          // Basic filtering logic (can be expanded)
+          // 1. Allergies: if meal has an allergen the resident has, skip.
+          if (meal.allergenTags?.some(allergen => resident.allergies.includes(allergen))) {
             return;
-        }
+          }
+          // 2. Contraindications for the resident (could be specific ingredients not directly on meal tags)
+          // This part would require more complex logic, for now, we assume contraindications are managed manually or via specific meal tags.
 
-        if (meal.dietTags && resident.dietaryRestrictions.some(restriction =>
-            restriction.toLowerCase().includes('sans sel') && !meal.dietTags.some(tag => tag.toLowerCase().includes('sans sel')))
-        ) {
-             if (!meal.dietTags.includes('Sans sel') && resident.dietaryRestrictions.includes('Sans sel')) return;
-        }
-
-        const prepType = getPreparationTypeForResident(resident);
-        details[meal.id][prepType]++;
+          // 3. Diets: if resident has a specific diet (e.g. Végétarien) and meal is main course but not compatible, skip.
+          //    This needs careful handling of alternative meals. For now, simpler logic:
+          if (meal.category === 'main') {
+            const isResidentVegetarian = resident.diets.includes('Végétarien');
+            const isMealVegetarian = meal.dietTags?.includes('Végétarien');
+            if (isResidentVegetarian && !isMealVegetarian) {
+                // If resident is vegetarian and main meal is not, they'd need a vegetarian alternative.
+                // For this summary, we only count if *this specific meal* is suitable.
+                // A more advanced system would assign an alternative vegetarian meal.
+                const vegAlternativeExists = mealsToDisplay.some(m => m.category === 'main' && m.dietTags?.includes('Végétarien'));
+                if (!isMealVegetarian && vegAlternativeExists) return; // Assume they get the veg alternative, not this one.
+            }
+            // Similar logic for other restrictive diets like "Sans Sel" for main courses.
+            if (resident.diets.includes('Sans sel') && !meal.dietTags?.includes('Sans sel')) {
+                 // If meal is not explicitly "Sans sel" and resident needs it, they might get an adapted version or alternative.
+                 // For simplicity, count this meal if it's not explicitly against the diet or if it's "Sans Sel" tagged.
+                 // This means a normal meal MIGHT be adapted. The "Sans sel" tag on a meal implies it's ALREADY sans sel.
+                 // If a meal is NOT tagged "Sans Sel" and resident IS "Sans Sel", this meal is not directly suitable.
+                 // For now, let's assume they won't get this specific meal if it doesn't meet the diet tag.
+                 if (!meal.dietTags?.includes('Sans sel')) return;
+            }
+          }
+          
+          const prepType = getPreparationTypeForResident(resident);
+          detailsByUnit[unitName][meal.id][prepType]++;
+        });
       });
     });
-    return details;
-  }, [presentResidents, mealsToDisplay]);
+    return detailsByUnit;
+  }, [presentResidentsByUnit, mealsToDisplay]);
 
   useEffect(() => {
     setMealPreparationStatus(prevStatus => {
-        const newStatusMap: Record<string, { target: number; current: number }> = {};
-        Object.keys(mealPreparationDetails).forEach(mealId => {
-            const mealDetails = mealPreparationDetails[mealId];
-            if (mealDetails) { // Check if mealDetails is defined
-                (Object.keys(mealDetails) as PreparationType[]).forEach(prepType => {
-                    const target = mealDetails[prepType];
-                    if (target > 0) {
-                        const key = `meal-${mealId}-prep-${prepType}`;
-                        const existing = prevStatus[key];
-                        newStatusMap[key] = {
-                            target: target,
-                            current: (existing && existing.target === target) ? existing.current : target,
-                        };
-                    }
-                });
-            }
+      const newStatusMap: Record<string, { target: number; current: number }> = {};
+      Object.keys(mealPreparationDetailsByUnit).forEach(unitName => {
+        Object.keys(mealPreparationDetailsByUnit[unitName]).forEach(mealId => {
+          const mealDetails = mealPreparationDetailsByUnit[unitName][mealId];
+          if (mealDetails) {
+            (Object.keys(mealDetails) as PreparationType[]).forEach(prepType => {
+              const target = mealDetails[prepType];
+              if (target > 0) {
+                const key = `unit-${unitName}-meal-${mealId}-prep-${prepType}`;
+                const existing = prevStatus[key];
+                newStatusMap[key] = {
+                  target: target,
+                  current: (existing && existing.target === target) ? existing.current : target,
+                };
+              }
+            });
+          }
         });
-        return newStatusMap;
+      });
+      return newStatusMap;
     });
-  }, [mealPreparationDetails]);
+  }, [mealPreparationDetailsByUnit]);
 
   const handleQuantityChange = (mealPrepKey: string, delta: number) => {
     setMealPreparationStatus(prev => {
-        const currentEntry = prev[mealPrepKey];
-        if (!currentEntry) return prev; 
-
-        const newCurrent = Math.max(0, currentEntry.current + delta);
-        return {
-            ...prev,
-            [mealPrepKey]: {
-                ...currentEntry,
-                current: newCurrent,
-            },
-        };
+      const currentEntry = prev[mealPrepKey];
+      if (!currentEntry) return prev;
+      const newCurrent = Math.max(0, currentEntry.current + delta);
+      return {
+        ...prev,
+        [mealPrepKey]: {
+          ...currentEntry,
+          current: newCurrent,
+        },
+      };
     });
   };
-
 
   const onFileUpload = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -204,50 +257,26 @@ export default function DashboardPage() {
     const file = formData.get('menuFile') as File;
 
     if (!file || file.size === 0) {
-      toast({
-        variant: "destructive",
-        title: "Aucun fichier sélectionné",
-        description: "Veuillez sélectionner un fichier Excel à importer.",
-      });
+      toast({ variant: "destructive", title: "Aucun fichier sélectionné", description: "Veuillez sélectionner un fichier Excel." });
       return;
     }
-
     if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls')) {
-        toast({
-            variant: "destructive",
-            title: "Type de fichier invalide",
-            description: "Veuillez sélectionner un fichier Excel (.xlsx ou .xls).",
-        });
+        toast({ variant: "destructive", title: "Type de fichier invalide", description: "Veuillez sélectionner un fichier Excel (.xlsx ou .xls)." });
         return;
     }
 
     try {
       const result = await handleMenuUpload(formData);
       if (result.success) {
-        toast({
-          title: "Importation réussie",
-          description: result.message,
-        });
-        if (result.menuData) {
-          setImportedMenuData(result.menuData);
-        }
-        if (fileInputRef.current) {
-          fileInputRef.current.value = "";
-        }
+        toast({ title: "Importation réussie", description: result.message });
+        if (result.menuData) setImportedMenuData(result.menuData);
+        if (fileInputRef.current) fileInputRef.current.value = "";
       } else {
-        toast({
-          variant: "destructive",
-          title: "Échec de l'importation",
-          description: result.message || "Une erreur est survenue lors de l'importation.",
-        });
+        toast({ variant: "destructive", title: "Échec de l'importation", description: result.message || "Erreur importation."});
       }
     } catch (error) {
       console.error("Upload error:", error);
-      toast({
-        variant: "destructive",
-        title: "Erreur d'importation",
-        description: "Une erreur inattendue est survenue lors de l'importation du fichier.",
-      });
+      toast({ variant: "destructive", title: "Erreur d'importation", description: "Erreur inattendue." });
     }
   };
 
@@ -265,14 +294,14 @@ export default function DashboardPage() {
             <CardContent>
               <div className="text-2xl font-bold font-body">{totalResidents}</div>
               <p className="text-xs text-muted-foreground font-body">
-                {presentForLunchCount} présents au déjeuner d'aujourd'hui
+                {presentForLunchCount} présents au déjeuner
               </p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium font-headline">Repas à Préparer (Déjeuner)</CardTitle>
+              <CardTitle className="text-sm font-medium font-headline">Repas à Préparer (Déjeuner Global)</CardTitle>
               <UtensilsCrossed className="h-5 w-5 text-muted-foreground" />
             </CardHeader>
             <CardContent>
@@ -302,103 +331,99 @@ export default function DashboardPage() {
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div className="flex items-center gap-2">
                     <ClipboardCheck className="h-6 w-6 text-primary" />
-                    <CardTitle className="font-headline">Suivi Préparation Repas (Déjeuner)</CardTitle>
+                    <CardTitle className="font-headline">Préparation Repas par Unité (Déjeuner)</CardTitle>
                 </div>
                 <form onSubmit={onFileUpload} className="flex items-center gap-2">
                     <Input
-                      ref={fileInputRef}
-                      type="file"
-                      name="menuFile"
-                      accept=".xlsx, .xls"
+                      ref={fileInputRef} type="file" name="menuFile" accept=".xlsx, .xls"
                       className="font-body text-sm file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
                     />
-                    <Button type="submit" size="sm" className="font-body">
-                        <Upload className="mr-2 h-4 w-4" /> Importer
-                    </Button>
+                    <Button type="submit" size="sm" className="font-body"><Upload className="mr-2 h-4 w-4" /> Importer Menu Global</Button>
                 </form>
             </div>
             <CardDescription className="font-body mt-2">
-              Ajustez les quantités à préparer pour les résidents présents. Importez un fichier Excel pour mettre à jour le menu.
+              Ajustez les quantités à préparer pour chaque unité et type de préparation. Menu global importé via Excel.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            {categoryOrder.map(category => {
-              const mealsInCategory = categorizedMeals[category];
-              if (!mealsInCategory || mealsInCategory.length === 0) return null;
-
-              const categoryHasContent = mealsInCategory.some(meal =>
-                Object.values(mealPreparationDetails[meal.id] || {}).some(count => count > 0)
-              );
-              if (!categoryHasContent && mealsToDisplay.length > 0) return null;
-
+          <CardContent className="space-y-6">
+            {Object.keys(presentResidentsByUnit).sort().map(unitName => {
+              const unitMealDetails = mealPreparationDetailsByUnit[unitName];
+              if (!unitMealDetails || presentResidentsByUnit[unitName].length === 0) return null;
 
               return (
-                <div key={category}>
-                  <h3 className="text-lg font-semibold font-body text-primary mb-3 border-b pb-2">{categoryLabels[category]}</h3>
-                  <div className="space-y-4">
-                    {mealsInCategory.map(meal => {
-                      const preparations = mealPreparationDetails[meal.id];
-                      if (!preparations) return null; 
+                <div key={unitName} className="border p-4 rounded-lg shadow-sm bg-card">
+                  <h2 className="text-xl font-headline text-primary mb-3 flex items-center gap-2">
+                    <Building className="h-5 w-5" />
+                    {unitName} 
+                    <span className="text-sm font-body text-muted-foreground">({presentResidentsByUnit[unitName].length} résidents présents)</span>
+                  </h2>
+                  {categoryOrder.map(category => {
+                    const mealsInCategory = categorizedMeals[category];
+                    if (!mealsInCategory || mealsInCategory.length === 0) return null;
 
-                      const hasPreparationsForThisMeal = Object.values(preparations).some(count => count > 0);
-                      if (!hasPreparationsForThisMeal) return null;
+                    const categoryHasContentForUnit = mealsInCategory.some(meal => 
+                        unitMealDetails[meal.id] && Object.values(unitMealDetails[meal.id]).some(count => count > 0)
+                    );
+                    if (!categoryHasContentForUnit && mealsToDisplay.length > 0) return null;
 
-                      return (
-                        <div key={meal.id} className="p-3 rounded-lg border bg-card hover:bg-muted/50 transition-colors">
-                          <p className="font-semibold font-body text-md mb-2">{meal.name}</p>
-                          {meal.description && <p className="text-xs text-muted-foreground mb-2">{meal.description}</p>}
-                          <div className="space-y-2 pl-1">
-                            {(Object.keys(preparations) as PreparationType[]).map(prepType => {
-                              const targetCount = preparations[prepType];
-                              if (targetCount === 0) return null;
-                              const mealPrepKey = `meal-${meal.id}-prep-${prepType}`;
-                              const currentQuantity = mealPreparationStatus[mealPrepKey]?.current ?? targetCount;
-                              
-                              return (
-                                <div key={mealPrepKey} className="flex items-center justify-between py-1">
-                                  <p className="font-body text-sm">
-                                    {prepType}: <span className="text-xs text-muted-foreground">(Prévu: {targetCount})</span>
-                                  </p>
-                                  <div className="flex items-center gap-1">
-                                    <Button 
-                                      variant="outline" 
-                                      size="icon" 
-                                      className="h-7 w-7" 
-                                      onClick={() => handleQuantityChange(mealPrepKey, -1)}
-                                      disabled={currentQuantity === 0}
-                                      aria-label={`Diminuer quantité ${meal.name} ${prepType}`}
-                                    >
-                                      <Minus className="h-4 w-4" />
-                                    </Button>
-                                    <span className="font-body font-semibold text-center w-10 text-base tabular-nums">
-                                      {currentQuantity}
-                                    </span>
-                                    <Button 
-                                      variant="outline" 
-                                      size="icon" 
-                                      className="h-7 w-7" 
-                                      onClick={() => handleQuantityChange(mealPrepKey, 1)}
-                                      aria-label={`Augmenter quantité ${meal.name} ${prepType}`}
-                                    >
-                                      <Plus className="h-4 w-4" />
-                                    </Button>
-                                  </div>
+                    return (
+                      <div key={`${unitName}-${category}`} className="mb-4 last:mb-0">
+                        <h3 className="text-md font-semibold font-body text-foreground mb-2 border-b pb-1">{categoryLabels[category]}</h3>
+                        <div className="space-y-3">
+                          {mealsInCategory.map(meal => {
+                            const preparations = unitMealDetails[meal.id];
+                            if (!preparations) return null;
+
+                            const hasPreparationsForThisMealInUnit = Object.values(preparations).some(count => count > 0);
+                            if (!hasPreparationsForThisMealInUnit) return null;
+                            
+                            return (
+                              <div key={`${unitName}-${meal.id}`} className="p-2.5 rounded-md border bg-background hover:bg-muted/30 transition-colors">
+                                <p className="font-semibold font-body text-base mb-1.5">{meal.name}</p>
+                                {meal.description && <p className="text-xs text-muted-foreground mb-1.5">{meal.description}</p>}
+                                <div className="space-y-1.5 pl-1">
+                                  {(Object.keys(preparations) as PreparationType[]).map(prepType => {
+                                    const targetCount = preparations[prepType];
+                                    if (targetCount === 0) return null;
+                                    
+                                    const mealPrepKey = `unit-${unitName}-meal-${meal.id}-prep-${prepType}`;
+                                    const currentQuantity = mealPreparationStatus[mealPrepKey]?.current ?? targetCount;
+                                    
+                                    return (
+                                      <div key={mealPrepKey} className="flex items-center justify-between py-0.5">
+                                        <p className="font-body text-sm">
+                                          {prepType}: <span className="text-xs text-muted-foreground">(Prévu: {targetCount})</span>
+                                        </p>
+                                        <div className="flex items-center gap-1">
+                                          <Button variant="outline" size="icon" className="h-6 w-6" onClick={() => handleQuantityChange(mealPrepKey, -1)} disabled={currentQuantity === 0} aria-label={`Diminuer ${meal.name} ${prepType} pour ${unitName}`}>
+                                            <Minus className="h-3.5 w-3.5" />
+                                          </Button>
+                                          <span className="font-body font-semibold text-center w-8 text-sm tabular-nums">
+                                            {currentQuantity}
+                                          </span>
+                                          <Button variant="outline" size="icon" className="h-6 w-6" onClick={() => handleQuantityChange(mealPrepKey, 1)} aria-label={`Augmenter ${meal.name} ${prepType} pour ${unitName}`}>
+                                            <Plus className="h-3.5 w-3.5" />
+                                          </Button>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
                                 </div>
-                              );
-                            })}
-                          </div>
+                              </div>
+                            );
+                          })}
                         </div>
-                      );
-                    })}
-                  </div>
+                      </div>
+                    );
+                  })}
                 </div>
               );
             })}
             {mealsToDisplay.length === 0 && (
-                <p className="text-muted-foreground font-body text-center py-4">Aucun plat programmé ou importé pour ce service. Utilisez le bouton "Importer" pour charger un menu.</p>
+                <p className="text-muted-foreground font-body text-center py-4">Aucun menu global chargé. Utilisez le bouton "Importer Menu Global".</p>
             )}
-             {(mealsToDisplay.length > 0 && !categoryOrder.some(category => categorizedMeals[category]?.some(meal => Object.values(mealPreparationDetails[meal.id] || {}).some(count => count > 0)))) && (
-                 <p className="text-muted-foreground font-body text-center py-4">Le menu est chargé, mais aucun résident présent ne correspond aux critères pour ces plats (vérifiez allergies, régimes, et présences).</p>
+            {(mealsToDisplay.length > 0 && Object.keys(presentResidentsByUnit).every(unit => presentResidentsByUnit[unit].length === 0 || !categoryOrder.some(category => categorizedMeals[category]?.some(meal => mealPreparationDetailsByUnit[unit]?.[meal.id] && Object.values(mealPreparationDetailsByUnit[unit][meal.id]).some(count => count > 0))))) && (
+                 <p className="text-muted-foreground font-body text-center py-4">Menu chargé, mais aucun résident présent ou plat applicable pour les unités (vérifiez présences, allergies, régimes, textures).</p>
              )}
           </CardContent>
         </Card>
@@ -414,21 +439,23 @@ export default function DashboardPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead className="font-headline">Résident</TableHead>
+                    <TableHead className="font-headline">Unité</TableHead>
                     <TableHead className="font-headline">Statut</TableHead>
                     <TableHead className="font-headline">Notes</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {presentResidentAttendances.slice(0,3).map(att => {
-                    const resident = mockResidents.find(r => r.id === att.residentId);
+                  {mockAttendance.filter(att => att.mealType === 'lunch').slice(0,4).map(att => {
+                    const resident = activeResidents.find(r => r.id === att.residentId);
                     return (
                       <TableRow key={att.id} className="font-body">
                         <TableCell className="flex items-center gap-2">
                            <Image src={resident?.avatarUrl || "https://placehold.co/40x40.png"} alt={resident?.firstName || ""} width={24} height={24} className="rounded-full" data-ai-hint="person avatar" />
                           {resident ? `${resident.firstName} ${resident.lastName}` : 'N/A'}
                         </TableCell>
+                        <TableCell>{resident?.unit || 'N/A'}</TableCell>
                         <TableCell>
-                          <Badge variant={att.status === 'present' ? 'default' : att.status === 'absent' ? 'destructive' : 'secondary'} className="bg-primary/20 text-primary-foreground">
+                          <Badge variant={att.status === 'present' ? 'default' : att.status === 'absent' ? 'destructive' : 'secondary'} className={att.status === 'present' ? 'bg-primary/20 text-primary-foreground' : ''}>
                             {att.status === 'present' ? 'Présent(e)' : att.status === 'absent' ? 'Absent(e)' : 'Extérieur'}
                           </Badge>
                         </TableCell>
@@ -436,29 +463,10 @@ export default function DashboardPage() {
                       </TableRow>
                     );
                   })}
-                   {mockAttendance.filter(att => att.status === 'absent' && att.mealType === 'lunch').slice(0,1).map(att => {
-                     const resident = mockResidents.find(r => r.id === att.residentId);
-                     return (
-                      <TableRow key={`absent-${att.id}`} className="font-body opacity-70">
-                        <TableCell className="flex items-center gap-2">
-                           <Image src={resident?.avatarUrl || "https://placehold.co/40x40.png"} alt={resident?.firstName || ""} width={24} height={24} className="rounded-full" data-ai-hint="person avatar" />
-                          {resident ? `${resident.firstName} ${resident.lastName}` : 'N/A'}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={'destructive'}>
-                            Absent(e)
-                          </Badge>
-                        </TableCell>
-                        <TableCell>{att.notes || '-'}</TableCell>
-                      </TableRow>
-                     );
-                   })}
                 </TableBody>
               </Table>
               <div className="mt-4">
-                <Link href="/attendance">
-                  <Button variant="outline" className="w-full font-body">Gérer les Présences</Button>
-                </Link>
+                <Link href="/attendance"><Button variant="outline" className="w-full font-body">Gérer les Présences</Button></Link>
               </div>
             </CardContent>
           </Card>
@@ -479,17 +487,9 @@ export default function DashboardPage() {
                   </div>
                 </div>
               ))}
-              {!clientSideRendered && (
-                <>
-                  <div className="h-16 bg-muted rounded-md animate-pulse"></div>
-                  <div className="h-16 bg-muted rounded-md animate-pulse"></div>
-                  <div className="h-16 bg-muted rounded-md animate-pulse"></div>
-                </>
-              )}
+              {!clientSideRendered && Array.from({length: 3}).map((_, i) => <div key={i} className="h-16 bg-muted rounded-md animate-pulse"></div>)}
               <div className="mt-4">
-                 <Link href="/notifications">
-                  <Button variant="outline" className="w-full font-body">Voir toutes les notifications</Button>
-                </Link>
+                 <Link href="/notifications"><Button variant="outline" className="w-full font-body">Voir toutes les notifications</Button></Link>
               </div>
             </CardContent>
           </Card>
