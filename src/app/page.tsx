@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { AppLayout } from '@/components/layout/app-layout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -18,7 +18,7 @@ import { useToast } from "@/hooks/use-toast";
 import { handleMenuUpload } from './actions';
 
 // Mock Data
-const today = new Date().toISOString().split('T')[0];
+const today = new Date().toISOString().split('T')[0]; // This is fine for mock data context if dates are relative to a "fixed" today for mocks.
 
 const mockResidents: Resident[] = [
   { id: '1', firstName: 'Jean', lastName: 'Dupont', roomNumber: '101A', dietaryRestrictions: ['Sans sel'], allergies: ['Arachides'], medicalSpecificities: 'Diabète type 2', isActive: true, avatarUrl: 'https://placehold.co/40x40.png' },
@@ -35,7 +35,7 @@ const mockAttendance: AttendanceRecord[] = [
   { id: 'att3', residentId: '3', date: today, mealType: 'lunch', status: 'present' },
   { id: 'att4', residentId: '4', date: today, mealType: 'lunch', status: 'present' },
   { id: 'att5', residentId: '5', date: today, mealType: 'lunch', status: 'present' },
-  { id: 'att6', residentId: '6', date: today, mealType: 'lunch', status: 'absent', notes: 'Rendez-vous coiffeur' }, 
+  { id: 'att6', residentId: '6', date: today, mealType: 'lunch', status: 'absent', notes: 'Rendez-vous coiffeur' },
 ];
 
 const initialMockMealsToday: Meal[] = [
@@ -48,11 +48,12 @@ const initialMockMealsToday: Meal[] = [
   { id: 'd2', name: 'Compote de Pommes Cannelle', category: 'dessert', dietTags: ['Végétarien', 'Sans Sel'], allergenTags: [] },
 ];
 
+const mockDateReference = new Date('2024-07-15T10:00:00.000Z');
 
 const mockNotifications: Notification[] = [
-  { id: '1', timestamp: new Date(Date.now() - 3600000).toISOString(), type: 'absence', title: 'Absence Imprévue', message: 'Sophie Petit ne prendra pas son repas ce midi (Coiffeur).', isRead: false, relatedResidentId: '6' },
-  { id: '2', timestamp: new Date(Date.now() - 7200000).toISOString(), type: 'info', title: 'Menu Spécial Anniversaire', message: 'Le dessert "Crème Caramel" est pour l\'anniversaire de Jean Dupont.', isRead: true },
-  { id: '3', timestamp: new Date(Date.now() - 10800000).toISOString(), type: 'allergy_alert', title: 'Allergie Arachides', message: 'Attention cuisine: Jean Dupont (Ch. 101A) est allergique aux arachides. Double-vérifier les préparations.', isRead: false, relatedResidentId: '1' },
+  { id: '1', timestamp: new Date(mockDateReference.getTime() - 3600000).toISOString(), type: 'absence', title: 'Absence Imprévue', message: 'Sophie Petit ne prendra pas son repas ce midi (Coiffeur).', isRead: false, relatedResidentId: '6' },
+  { id: '2', timestamp: new Date(mockDateReference.getTime() - 7200000).toISOString(), type: 'info', title: 'Menu Spécial Anniversaire', message: 'Le dessert "Crème Caramel" est pour l\'anniversaire de Jean Dupont.', isRead: true },
+  { id: '3', timestamp: new Date(mockDateReference.getTime() - 10800000).toISOString(), type: 'allergy_alert', title: 'Allergie Arachides', message: 'Attention cuisine: Jean Dupont (Ch. 101A) est allergique aux arachides. Double-vérifier les préparations.', isRead: false, relatedResidentId: '1' },
 ];
 
 type PreparationType = 'Normal' | 'Mixé' | 'Haché';
@@ -68,6 +69,11 @@ export default function DashboardPage() {
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importedMenuData, setImportedMenuData] = useState<Meal[] | null>(null);
+  const [clientSideRendered, setClientSideRendered] = useState(false);
+
+  useEffect(() => {
+    setClientSideRendered(true);
+  }, []);
 
   const mealsToDisplay = useMemo(() => {
     return importedMenuData || initialMockMealsToday;
@@ -85,7 +91,7 @@ export default function DashboardPage() {
 
   const totalResidents = mockResidents.length;
   const presentForLunchCount = presentResidents.length;
-  
+
   const dietSpecificMeals = useMemo(() => ({
     'Sans sel': presentResidents.filter(r => r.dietaryRestrictions.includes('Sans sel')).length,
     'Végétarien': presentResidents.filter(r => r.dietaryRestrictions.includes('Végétarien')).length,
@@ -110,13 +116,13 @@ export default function DashboardPage() {
     setMealPreparationStatus(prev => ({ ...prev, [mealPrepKey]: isReady }));
   };
 
-  const categorizedMeals: Record<string, Meal[]> = useMemo(() => 
+  const categorizedMeals: Record<string, Meal[]> = useMemo(() =>
     mealsToDisplay.reduce((acc, meal) => {
       const category = meal.category;
       if (!acc[category]) acc[category] = [];
       acc[category].push(meal);
       return acc;
-    }, {} as Record<string, Meal[]>), 
+    }, {} as Record<string, Meal[]>),
   [mealsToDisplay]);
 
   const categoryOrder: Meal['category'][] = ['starter', 'main', 'dessert', 'snack', 'drink'];
@@ -135,34 +141,21 @@ export default function DashboardPage() {
       presentResidents.forEach(resident => {
         const isResidentVegetarian = resident.dietaryRestrictions.includes('Végétarien');
         const isMealVegetarian = meal.dietTags?.includes('Végétarien');
-        
+
         if (isResidentVegetarian && !isMealVegetarian && meal.category === 'main') {
-          // This logic might need adjustment if specific vegetarian dishes are listed in the menu
-          // For now, assume vegetarians get a dedicated vegetarian main dish if listed, otherwise skip non-veg main.
           const vegMain = mealsToDisplay.find(m => m.category === 'main' && m.dietTags?.includes('Végétarien'));
-          if (vegMain && vegMain.id !== meal.id) return; 
-        }
-        
-        // Check for allergies
-        if (meal.allergenTags && meal.allergenTags.some(allergen => resident.allergies.includes(allergen))) {
-            // Resident is allergic to this meal, do not count for preparation
-            // This is a simplification; real system might need alternative meal logic
-            return; 
+          if (vegMain && vegMain.id !== meal.id) return;
         }
 
-        // Check for dietary restrictions not covered by simple tags (e.g. "Sans porc" for a "Boeuf" dish is fine)
-        // This part can get complex. For now, we assume dietTags on meals are sufficient or specific meals are chosen.
-        // Example: if resident is "Sans sel" and meal is not "Sans Sel" tagged, they shouldn't get it.
-        if (meal.dietTags && resident.dietaryRestrictions.some(restriction => 
+        if (meal.allergenTags && meal.allergenTags.some(allergen => resident.allergies.includes(allergen))) {
+            return;
+        }
+
+        if (meal.dietTags && resident.dietaryRestrictions.some(restriction =>
             restriction.toLowerCase().includes('sans sel') && !meal.dietTags.some(tag => tag.toLowerCase().includes('sans sel')))
         ) {
-            // Specific diet tag mismatch, skip
-            // This logic is basic and might need refinement based on how dietTags are used.
-            // It assumes if a resident needs "Sans sel", the meal *must* be tagged "Sans Sel".
              if (!meal.dietTags.includes('Sans sel') && resident.dietaryRestrictions.includes('Sans sel')) return;
-
         }
-
 
         const prepType = getPreparationTypeForResident(resident);
         details[meal.id][prepType]++;
@@ -184,7 +177,7 @@ export default function DashboardPage() {
       });
       return;
     }
-    
+
     if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls')) {
         toast({
             variant: "destructive",
@@ -223,12 +216,12 @@ export default function DashboardPage() {
       });
     }
   };
-  
+
   return (
     <AppLayout>
       <div className="space-y-6">
         <h1 className="text-3xl font-headline font-semibold text-foreground">Tableau de Bord</h1>
-        
+
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -298,8 +291,8 @@ export default function DashboardPage() {
             {categoryOrder.map(category => {
               const mealsInCategory = categorizedMeals[category];
               if (!mealsInCategory || mealsInCategory.length === 0) return null;
-              
-              const categoryHasContent = mealsInCategory.some(meal => 
+
+              const categoryHasContent = mealsInCategory.some(meal =>
                 Object.values(mealPreparationDetails[meal.id] || {}).some(count => count > 0)
               );
               if (!categoryHasContent && mealsToDisplay.length > 0) return null;
@@ -311,8 +304,8 @@ export default function DashboardPage() {
                   <div className="space-y-4">
                     {mealsInCategory.map(meal => {
                       const preparations = mealPreparationDetails[meal.id];
-                      if (!preparations) return null; // Meal might not be in details if no one is eating it
-                      
+                      if (!preparations) return null; 
+
                       const hasPreparationsForThisMeal = Object.values(preparations).some(count => count > 0);
                       if (!hasPreparationsForThisMeal) return null;
 
@@ -424,7 +417,7 @@ export default function DashboardPage() {
               <CardDescription className="font-body">Dernières alertes et informations importantes.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
-              {mockNotifications.slice(0, 3).map(notif => (
+              {clientSideRendered && mockNotifications.slice(0, 3).map(notif => (
                 <div key={notif.id} className={`flex items-start gap-3 p-3 rounded-md border ${!notif.isRead ? 'bg-accent/10 border-accent' : 'bg-card'}`}>
                   <div className="pt-1">{getNotificationIcon(notif.type)}</div>
                   <div>
@@ -434,6 +427,13 @@ export default function DashboardPage() {
                   </div>
                 </div>
               ))}
+              {!clientSideRendered && (
+                <>
+                  <div className="h-16 bg-muted rounded-md animate-pulse"></div>
+                  <div className="h-16 bg-muted rounded-md animate-pulse"></div>
+                  <div className="h-16 bg-muted rounded-md animate-pulse"></div>
+                </>
+              )}
               <div className="mt-4">
                  <Link href="/notifications">
                   <Button variant="outline" className="w-full font-body">Voir toutes les notifications</Button>
