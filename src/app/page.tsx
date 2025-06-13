@@ -18,12 +18,12 @@ import { handleMenuUpload } from './actions';
 const today = new Date().toISOString().split('T')[0]; 
 
 const mockResidents: Resident[] = [
-  { id: '1', firstName: 'Jean', lastName: 'Dupont', roomNumber: '101A', dietaryRestrictions: [], allergies: ['Arachides'], medicalSpecificities: 'Diabète type 2', isActive: true, avatarUrl: 'https://placehold.co/40x40.png', unit: 'Unité A', contraindications: ['Pamplemousse'], textures: ['Normal'], diets: ['Sans sel', 'Diabétique'] },
-  { id: '2', firstName: 'Marie', lastName: 'Curie', roomNumber: '102B', dietaryRestrictions: [], allergies: [], medicalSpecificities: 'Hypertension', isActive: true, avatarUrl: 'https://placehold.co/40x40.png', unit: 'Unité A', contraindications: [], textures: ['Mixé lisse'], diets: ['Végétarien', 'Hyperprotéiné'] },
-  { id: '3', firstName: 'Pierre', lastName: 'Gagnon', roomNumber: '103C', dietaryRestrictions: [], allergies: ['Gluten'], medicalSpecificities: '', isActive: true, avatarUrl: 'https://placehold.co/40x40.png', unit: 'Unité B', contraindications: [], textures: ['Haché fin'], diets: ['Sans porc'] },
-  { id: '4', firstName: 'Lucie', lastName: 'Tremblay', roomNumber: '201A', dietaryRestrictions: [], allergies: [], medicalSpecificities: '', isActive: true, avatarUrl: 'https://placehold.co/40x40.png', unit: 'Unité A', contraindications: [], textures: ['Normal'], diets: [] },
-  { id: '5', firstName: 'Ahmed', lastName: 'Benali', roomNumber: '202B', dietaryRestrictions: [], allergies: [], medicalSpecificities: 'Difficultés de déglutition', isActive: true, avatarUrl: 'https://placehold.co/40x40.png', unit: 'Unité B', contraindications: [], textures: ['Mixé morceaux'], diets: ['Sans porc'] },
-  { id: '6', firstName: 'Sophie', lastName: 'Petit', roomNumber: '203C', dietaryRestrictions: [], allergies: [], medicalSpecificities: '', isActive: true, avatarUrl: 'https://placehold.co/40x40.png', unit: 'Unité B', contraindications: ['Soja'], textures: ['Normal'], diets: ['Diabétique'] },
+  { id: '1', firstName: 'Jean', lastName: 'Dupont', roomNumber: '101A', allergies: ['Arachides'], medicalSpecificities: 'Diabète type 2', isActive: true, avatarUrl: 'https://placehold.co/40x40.png', unit: 'Unité A', contraindications: ['Pamplemousse'], textures: ['Normal'], diets: ['Sans sel', 'Diabétique'] },
+  { id: '2', firstName: 'Marie', lastName: 'Curie', roomNumber: '102B', allergies: [], medicalSpecificities: 'Hypertension', isActive: true, avatarUrl: 'https://placehold.co/40x40.png', unit: 'Unité A', contraindications: [], textures: ['Mixé lisse'], diets: ['Végétarien', 'Hyperprotéiné'] },
+  { id: '3', firstName: 'Pierre', lastName: 'Gagnon', roomNumber: '103C', allergies: ['Gluten'], medicalSpecificities: '', isActive: true, avatarUrl: 'https://placehold.co/40x40.png', unit: 'Unité B', contraindications: [], textures: ['Haché fin'], diets: ['Sans porc'] },
+  { id: '4', firstName: 'Lucie', lastName: 'Tremblay', roomNumber: '201A', allergies: [], medicalSpecificities: '', isActive: true, avatarUrl: 'https://placehold.co/40x40.png', unit: 'Unité A', contraindications: [], textures: ['Normal'], diets: [] },
+  { id: '5', firstName: 'Ahmed', lastName: 'Benali', roomNumber: '202B', allergies: [], medicalSpecificities: 'Difficultés de déglutition', isActive: true, avatarUrl: 'https://placehold.co/40x40.png', unit: 'Unité B', contraindications: [], textures: ['Mixé morceaux'], diets: ['Sans porc'] },
+  { id: '6', firstName: 'Sophie', lastName: 'Petit', roomNumber: '203C', allergies: [], medicalSpecificities: '', isActive: true, avatarUrl: 'https://placehold.co/40x40.png', unit: 'Unité B', contraindications: ['Soja'], textures: ['Normal'], diets: ['Diabétique'] },
 ];
 
 const mockAttendance: AttendanceRecord[] = [
@@ -45,6 +45,7 @@ const initialMockMealsToday: Meal[] = [
   { id: 'd2', name: 'Compote de Pommes Cannelle', category: 'dessert', dietTags: ['Végétarien', 'Sans Sel'], allergenTags: [], description: "Compote simple et réconfortante." },
 ];
 
+// Fixed reference date for mock data to avoid hydration issues
 const mockDateReference = new Date('2024-07-15T10:00:00.000Z');
 
 const mockNotifications: Notification[] = [
@@ -58,13 +59,13 @@ const ALL_PREPARATION_TYPES: PreparationType[] = ['Normal', 'Mixé morceaux', 'M
 
 
 const getPreparationTypeForResident = (resident: Resident): PreparationType => {
-  // This logic might need to be more sophisticated based on resident.textures
+  if (!resident.textures || resident.textures.length === 0) return 'Normal';
   if (resident.textures.some(t => t.toLowerCase().includes('mixé lisse'))) return 'Mixé lisse';
   if (resident.textures.some(t => t.toLowerCase().includes('mixé morceaux'))) return 'Mixé morceaux';
   if (resident.textures.some(t => t.toLowerCase().includes('haché fin'))) return 'Haché fin';
   if (resident.textures.some(t => t.toLowerCase().includes('haché gros'))) return 'Haché gros';
   if (resident.textures.some(t => t.toLowerCase().includes('normal'))) return 'Normal';
-  return 'Normal'; // Default
+  return 'Normal';
 };
 
 export default function DashboardPage() {
@@ -72,6 +73,7 @@ export default function DashboardPage() {
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importedMenuData, setImportedMenuData] = useState<Meal[] | null>(null);
+  const [importedFileName, setImportedFileName] = useState<string | null>(null);
   const [clientSideRendered, setClientSideRendered] = useState(false);
 
   useEffect(() => {
@@ -172,33 +174,17 @@ export default function DashboardPage() {
         }
         
         residentsInUnit.forEach(resident => {
-          // Basic filtering logic (can be expanded)
-          // 1. Allergies: if meal has an allergen the resident has, skip.
           if (meal.allergenTags?.some(allergen => resident.allergies.includes(allergen))) {
             return;
           }
-          // 2. Contraindications for the resident (could be specific ingredients not directly on meal tags)
-          // This part would require more complex logic, for now, we assume contraindications are managed manually or via specific meal tags.
-
-          // 3. Diets: if resident has a specific diet (e.g. Végétarien) and meal is main course but not compatible, skip.
-          //    This needs careful handling of alternative meals. For now, simpler logic:
           if (meal.category === 'main') {
             const isResidentVegetarian = resident.diets.includes('Végétarien');
             const isMealVegetarian = meal.dietTags?.includes('Végétarien');
             if (isResidentVegetarian && !isMealVegetarian) {
-                // If resident is vegetarian and main meal is not, they'd need a vegetarian alternative.
-                // For this summary, we only count if *this specific meal* is suitable.
-                // A more advanced system would assign an alternative vegetarian meal.
                 const vegAlternativeExists = mealsToDisplay.some(m => m.category === 'main' && m.dietTags?.includes('Végétarien'));
-                if (!isMealVegetarian && vegAlternativeExists) return; // Assume they get the veg alternative, not this one.
+                if (!isMealVegetarian && vegAlternativeExists) return; 
             }
-            // Similar logic for other restrictive diets like "Sans Sel" for main courses.
             if (resident.diets.includes('Sans sel') && !meal.dietTags?.includes('Sans sel')) {
-                 // If meal is not explicitly "Sans sel" and resident needs it, they might get an adapted version or alternative.
-                 // For simplicity, count this meal if it's not explicitly against the diet or if it's "Sans Sel" tagged.
-                 // This means a normal meal MIGHT be adapted. The "Sans sel" tag on a meal implies it's ALREADY sans sel.
-                 // If a meal is NOT tagged "Sans Sel" and resident IS "Sans Sel", this meal is not directly suitable.
-                 // For now, let's assume they won't get this specific meal if it doesn't meet the diet tag.
                  if (!meal.dietTags?.includes('Sans sel')) return;
             }
           }
@@ -269,14 +255,21 @@ export default function DashboardPage() {
       const result = await handleMenuUpload(formData);
       if (result.success) {
         toast({ title: "Importation réussie", description: result.message });
-        if (result.menuData) setImportedMenuData(result.menuData);
+        if (result.menuData) {
+            setImportedMenuData(result.menuData);
+            setImportedFileName(result.fileName || null);
+        }
         if (fileInputRef.current) fileInputRef.current.value = "";
       } else {
         toast({ variant: "destructive", title: "Échec de l'importation", description: result.message || "Erreur importation."});
+        setImportedMenuData(null); // Revenir au menu par défaut en cas d'échec
+        setImportedFileName(null);
       }
     } catch (error) {
       console.error("Upload error:", error);
       toast({ variant: "destructive", title: "Erreur d'importation", description: "Erreur inattendue." });
+      setImportedMenuData(null);
+      setImportedFileName(null);
     }
   };
 
@@ -342,7 +335,12 @@ export default function DashboardPage() {
                 </form>
             </div>
             <CardDescription className="font-body mt-2">
-              Ajustez les quantités à préparer pour chaque unité et type de préparation. Menu global importé via Excel.
+              {importedFileName ? (
+                <>Menu du jour chargé depuis : <strong>{importedFileName}</strong>. </>
+              ) : (
+                <>Affichage du menu par défaut. </>
+              )}
+              Ajustez les quantités à préparer pour chaque unité. L'importation d'un nouveau menu via Excel mettra à jour les plats ci-dessous.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -498,3 +496,5 @@ export default function DashboardPage() {
     </AppLayout>
   );
 }
+
+    
