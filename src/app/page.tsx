@@ -7,15 +7,17 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import type { Notification, Resident, AttendanceRecord, Meal } from '@/types';
+import type { Notification, Resident, AttendanceRecord, Meal, WeeklyDayPlan, PlannedMealItem } from '@/types';
 import { AlertTriangle, CheckCircle2, Info, Users, UtensilsCrossed, BellRing, ClipboardCheck, Upload, Plus, Minus, Building } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { Input } from '@/components/ui/input';
 import { useToast } from "@/hooks/use-toast";
 import { handleMenuUpload } from './actions';
+import { format, parseISO, isToday } from 'date-fns';
 
-const today = new Date().toISOString().split('T')[0]; 
+
+const todayISO = new Date().toISOString().split('T')[0]; 
 
 const mockResidents: Resident[] = [
   { id: '1', firstName: 'Jean', lastName: 'Dupont', roomNumber: '101A', allergies: ['Arachides'], medicalSpecificities: 'Diabète type 2', isActive: true, avatarUrl: 'https://placehold.co/40x40.png', unit: 'Unité A', contraindications: ['Pamplemousse'], textures: ['Normal'], diets: ['Sans sel', 'Diabétique'] },
@@ -27,25 +29,22 @@ const mockResidents: Resident[] = [
 ];
 
 const mockAttendance: AttendanceRecord[] = [
-  { id: 'att1', residentId: '1', date: today, mealType: 'lunch', status: 'present' },
-  { id: 'att2', residentId: '2', date: today, mealType: 'lunch', status: 'present' },
-  { id: 'att3', residentId: '3', date: today, mealType: 'lunch', status: 'present' },
-  { id: 'att4', residentId: '4', date: today, mealType: 'lunch', status: 'present' },
-  { id: 'att5', residentId: '5', date: today, mealType: 'lunch', status: 'present' },
-  { id: 'att6', residentId: '6', date: today, mealType: 'lunch', status: 'absent', notes: 'Rendez-vous coiffeur' },
+  { id: 'att1', residentId: '1', date: todayISO, mealType: 'lunch', status: 'present' },
+  { id: 'att2', residentId: '2', date: todayISO, mealType: 'lunch', status: 'present' },
+  { id: 'att3', residentId: '3', date: todayISO, mealType: 'lunch', status: 'present' },
+  { id: 'att4', residentId: '4', date: todayISO, mealType: 'lunch', status: 'present' },
+  { id: 'att5', residentId: '5', date: todayISO, mealType: 'lunch', status: 'present' },
+  { id: 'att6', residentId: '6', date: todayISO, mealType: 'lunch', status: 'absent', notes: 'Rendez-vous coiffeur' },
 ];
 
-const initialMockMealsToday: Meal[] = [
-  { id: 's1', name: 'Velouté de Carottes au Cumin', category: 'starter', dietTags: ['Végétarien', 'Sans Sel'], allergenTags: [], description: "Un velouté doux et parfumé." },
-  { id: 's2', name: 'Salade Composée du Chef', category: 'starter', dietTags: [], allergenTags: ['Gluten'], description: "Salade fraîcheur avec croûtons." },
-  { id: 'm1', name: 'Boeuf Bourguignon Traditionnel', category: 'main', dietTags: [], allergenTags: [], description: "Un classique mijoté lentement." },
-  { id: 'm2', name: 'Filet de Cabillaud Vapeur, Sauce Citronnée', category: 'main', dietTags: ['Sans Sel'], allergenTags: [], description: "Poisson léger et acidulé." },
-  { id: 'm3', name: 'Curry de Légumes aux Lentilles Corail', category: 'main', dietTags: ['Végétarien'], allergenTags: [], description: "Plat végétarien nutritif." },
-  { id: 'd1', name: 'Crème Caramel Maison', category: 'dessert', dietTags: [], allergenTags: ['Oeuf', 'Lactose'], description: "Dessert onctueux et gourmand." },
-  { id: 'd2', name: 'Compote de Pommes Cannelle', category: 'dessert', dietTags: ['Végétarien', 'Sans Sel'], allergenTags: [], description: "Compote simple et réconfortante." },
+// This will be our fallback if no weekly plan is loaded or today's meals aren't in the plan
+const initialMockMealsTodayForDashboard: Meal[] = [
+  { id: 'fallback-s1', name: 'Velouté de Carottes (Défaut)', category: 'starter', dietTags: ['Végétarien', 'Sans Sel'], allergenTags: [], description: "Un velouté doux et parfumé." },
+  { id: 'fallback-m1', name: 'Boeuf Bourguignon (Défaut)', category: 'main', dietTags: [], allergenTags: [], description: "Un classique mijoté lentement." },
+  { id: 'fallback-d1', name: 'Crème Caramel (Défaut)', category: 'dessert', dietTags: [], allergenTags: ['Oeuf', 'Lactose'], description: "Dessert onctueux et gourmand." },
 ];
 
-// Fixed reference date for mock data to avoid hydration issues
+
 const mockDateReference = new Date('2024-07-15T10:00:00.000Z');
 
 const mockNotifications: Notification[] = [
@@ -60,32 +59,79 @@ const ALL_PREPARATION_TYPES: PreparationType[] = ['Normal', 'Mixé morceaux', 'M
 
 const getPreparationTypeForResident = (resident: Resident): PreparationType => {
   if (!resident.textures || resident.textures.length === 0) return 'Normal';
-  if (resident.textures.some(t => t.toLowerCase().includes('mixé lisse'))) return 'Mixé lisse';
-  if (resident.textures.some(t => t.toLowerCase().includes('mixé morceaux'))) return 'Mixé morceaux';
-  if (resident.textures.some(t => t.toLowerCase().includes('haché fin'))) return 'Haché fin';
-  if (resident.textures.some(t => t.toLowerCase().includes('haché gros'))) return 'Haché gros';
-  if (resident.textures.some(t => t.toLowerCase().includes('normal'))) return 'Normal';
+  const lowerTextures = resident.textures.map(t => t.toLowerCase());
+  if (lowerTextures.some(t => t.includes('mixé lisse'))) return 'Mixé lisse';
+  if (lowerTextures.some(t => t.includes('mixé morceaux'))) return 'Mixé morceaux';
+  if (lowerTextures.some(t => t.includes('haché fin'))) return 'Haché fin';
+  if (lowerTextures.some(t => t.includes('haché gros'))) return 'Haché gros';
+  if (lowerTextures.some(t => t.includes('normal'))) return 'Normal';
   return 'Normal';
 };
+
+// Helper to convert PlannedMealItem to Meal (for dashboard display)
+const plannedItemToMeal = (item: PlannedMealItem, idSuffix: string): Meal => ({
+  id: `planned-${item.name.replace(/\s+/g, '-').toLowerCase()}-${idSuffix}`,
+  name: item.name,
+  category: item.category,
+  dietTags: item.dietTags || [],
+  allergenTags: item.allergenTags || [],
+  description: item.description,
+});
+
 
 export default function DashboardPage() {
   const [mealPreparationStatus, setMealPreparationStatus] = useState<Record<string, { target: number; current: number }>>({});
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [importedMenuData, setImportedMenuData] = useState<Meal[] | null>(null);
+  
+  const [importedWeeklyPlan, setImportedWeeklyPlan] = useState<WeeklyDayPlan[] | null>(null);
   const [importedFileName, setImportedFileName] = useState<string | null>(null);
   const [clientSideRendered, setClientSideRendered] = useState(false);
 
   useEffect(() => {
     setClientSideRendered(true);
+    // Try to load from localStorage on initial mount
+    const storedPlan = localStorage.getItem('currentWeeklyPlan');
+    if (storedPlan) {
+      try {
+        const parsedPlan = JSON.parse(storedPlan);
+        setImportedWeeklyPlan(parsedPlan);
+        // Potentially store filename in localStorage too if needed for persistence across sessions
+        const storedFileName = localStorage.getItem('currentWeeklyPlanFileName');
+        if(storedFileName) setImportedFileName(storedFileName);
+
+      } catch (e) {
+        console.error("Error parsing stored weekly plan:", e);
+        localStorage.removeItem('currentWeeklyPlan');
+        localStorage.removeItem('currentWeeklyPlanFileName');
+      }
+    }
   }, []);
 
-  const mealsToDisplay = useMemo(() => {
-    return importedMenuData || initialMockMealsToday;
-  }, [importedMenuData]);
+  const mealsToDisplayForDashboard = useMemo(() => {
+    if (!importedWeeklyPlan) return initialMockMealsTodayForDashboard;
+
+    const todayPlan = importedWeeklyPlan.find(dayPlan => isToday(parseISO(dayPlan.date)));
+    
+    if (!todayPlan) return initialMockMealsTodayForDashboard;
+
+    const todaysMeals: Meal[] = [];
+    const lunch = todayPlan.meals.lunch;
+    const dinner = todayPlan.meals.dinner; // Assuming dashboard might eventually show dinner prep too
+
+    // For dashboard, we are primarily interested in lunch for now
+    if (lunch.starter) todaysMeals.push(plannedItemToMeal(lunch.starter, 'lunch-starter'));
+    if (lunch.main) todaysMeals.push(plannedItemToMeal(lunch.main, 'lunch-main'));
+    if (lunch.dessert) todaysMeals.push(plannedItemToMeal(lunch.dessert, 'lunch-dessert'));
+    
+    // If no lunch meals are specifically found for today, fall back.
+    return todaysMeals.length > 0 ? todaysMeals : initialMockMealsTodayForDashboard;
+
+  }, [importedWeeklyPlan]);
+
 
   const presentResidentAttendances = useMemo(() => {
-    return mockAttendance.filter(a => a.mealType === 'lunch' && a.status === 'present');
+    return mockAttendance.filter(a => a.mealType === 'lunch' && a.status === 'present' && a.date === todayISO);
   }, []);
 
   const activeResidents = useMemo(() => mockResidents.filter(r => r.isActive), []);
@@ -142,14 +188,14 @@ export default function DashboardPage() {
     }
   };
 
-  const categorizedMeals: Record<string, Meal[]> = useMemo(() =>
-    mealsToDisplay.reduce((acc, meal) => {
+  const categorizedMealsForDashboard: Record<string, Meal[]> = useMemo(() =>
+    mealsToDisplayForDashboard.reduce((acc, meal) => {
       const category = meal.category;
       if (!acc[category]) acc[category] = [];
       acc[category].push(meal);
       return acc;
     }, {} as Record<string, Meal[]>),
-  [mealsToDisplay]);
+  [mealsToDisplayForDashboard]);
 
   const categoryOrder: Meal['category'][] = ['starter', 'main', 'dessert', 'snack', 'drink'];
   const categoryLabels: Record<Meal['category'], string> = {
@@ -167,7 +213,7 @@ export default function DashboardPage() {
       detailsByUnit[unitName] = {};
       const residentsInUnit = presentResidentsByUnit[unitName];
 
-      mealsToDisplay.forEach(meal => {
+      mealsToDisplayForDashboard.forEach(meal => {
         if (!detailsByUnit[unitName][meal.id]) {
             detailsByUnit[unitName][meal.id] = {} as Record<PreparationType, number>;
             ALL_PREPARATION_TYPES.forEach(pt => detailsByUnit[unitName][meal.id][pt] = 0);
@@ -177,15 +223,17 @@ export default function DashboardPage() {
           if (meal.allergenTags?.some(allergen => resident.allergies.includes(allergen))) {
             return;
           }
-          if (meal.category === 'main') {
+          if (meal.category === 'main') { // Logic specific for main course, adapt if needed for others
             const isResidentVegetarian = resident.diets.includes('Végétarien');
             const isMealVegetarian = meal.dietTags?.includes('Végétarien');
             if (isResidentVegetarian && !isMealVegetarian) {
-                const vegAlternativeExists = mealsToDisplay.some(m => m.category === 'main' && m.dietTags?.includes('Végétarien'));
-                if (!isMealVegetarian && vegAlternativeExists) return; 
+                // If resident is vegetarian and current meal isn't, check if a vegetarian main is available at all today
+                const vegAlternativeExists = mealsToDisplayForDashboard.some(m => m.category === 'main' && m.dietTags?.includes('Végétarien'));
+                if (vegAlternativeExists) return; // Skip non-veg meal for veg resident if veg alternative exists
             }
+            // Example for "Sans sel" - if resident needs "Sans sel" and meal isn't tagged, skip for this resident
             if (resident.diets.includes('Sans sel') && !meal.dietTags?.includes('Sans sel')) {
-                 if (!meal.dietTags?.includes('Sans sel')) return;
+                 return;
             }
           }
           
@@ -195,7 +243,7 @@ export default function DashboardPage() {
       });
     });
     return detailsByUnit;
-  }, [presentResidentsByUnit, mealsToDisplay]);
+  }, [presentResidentsByUnit, mealsToDisplayForDashboard]);
 
   useEffect(() => {
     setMealPreparationStatus(prevStatus => {
@@ -253,25 +301,40 @@ export default function DashboardPage() {
 
     try {
       const result = await handleMenuUpload(formData);
-      if (result.success) {
-        toast({ title: "Importation réussie", description: result.message });
-        if (result.menuData) {
-            setImportedMenuData(result.menuData);
-            setImportedFileName(result.fileName || null);
-        }
+      if (result.success && result.menuData) {
+        toast({ title: "Importation du planning réussie", description: result.message });
+        setImportedWeeklyPlan(result.menuData as WeeklyDayPlan[]);
+        setImportedFileName(result.fileName || null);
+        localStorage.setItem('currentWeeklyPlan', JSON.stringify(result.menuData));
+        if(result.fileName) localStorage.setItem('currentWeeklyPlanFileName', result.fileName); else localStorage.removeItem('currentWeeklyPlanFileName');
+
         if (fileInputRef.current) fileInputRef.current.value = "";
       } else {
         toast({ variant: "destructive", title: "Échec de l'importation", description: result.message || "Erreur importation."});
-        setImportedMenuData(null); // Revenir au menu par défaut en cas d'échec
-        setImportedFileName(null);
+        // Potentially clear localStorage or revert to a default state if needed
+        // setImportedWeeklyPlan(null); 
+        // setImportedFileName(null);
+        // localStorage.removeItem('currentWeeklyPlan');
+        // localStorage.removeItem('currentWeeklyPlanFileName');
       }
     } catch (error) {
       console.error("Upload error:", error);
       toast({ variant: "destructive", title: "Erreur d'importation", description: "Erreur inattendue." });
-      setImportedMenuData(null);
-      setImportedFileName(null);
+      // setImportedWeeklyPlan(null);
+      // setImportedFileName(null);
+      // localStorage.removeItem('currentWeeklyPlan');
+      // localStorage.removeItem('currentWeeklyPlanFileName');
     }
   };
+
+  const clearImportedPlan = () => {
+    setImportedWeeklyPlan(null);
+    setImportedFileName(null);
+    localStorage.removeItem('currentWeeklyPlan');
+    localStorage.removeItem('currentWeeklyPlanFileName');
+    toast({title: "Planning importé effacé", description: "Affichage du menu par défaut."});
+  }
+
 
   return (
     <AppLayout>
@@ -331,16 +394,15 @@ export default function DashboardPage() {
                       ref={fileInputRef} type="file" name="menuFile" accept=".xlsx, .xls"
                       className="font-body text-sm file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
                     />
-                    <Button type="submit" size="sm" className="font-body"><Upload className="mr-2 h-4 w-4" /> Importer Menu Global</Button>
+                    <Button type="submit" size="sm" className="font-body"><Upload className="mr-2 h-4 w-4" /> Importer Planning Semaine</Button>
                 </form>
             </div>
             <CardDescription className="font-body mt-2">
               {importedFileName ? (
-                <>Menu du jour chargé depuis : <strong>{importedFileName}</strong>. </>
+                <>Planning hebdomadaire chargé depuis : <strong>{importedFileName}</strong>. Les repas du jour sont affichés ci-dessous. <Button variant="link" size="sm" className="p-0 h-auto text-xs" onClick={clearImportedPlan}>Effacer le planning importé</Button></>
               ) : (
-                <>Affichage du menu par défaut. </>
+                <>Affichage du menu par défaut pour aujourd'hui. Importez un planning Excel pour la semaine.</>
               )}
-              Ajustez les quantités à préparer pour chaque unité. L'importation d'un nouveau menu via Excel mettra à jour les plats ci-dessous.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -353,16 +415,16 @@ export default function DashboardPage() {
                   <h2 className="text-xl font-headline text-primary mb-3 flex items-center gap-2">
                     <Building className="h-5 w-5" />
                     {unitName} 
-                    <span className="text-sm font-body text-muted-foreground">({presentResidentsByUnit[unitName].length} résidents présents)</span>
+                    <span className="text-sm font-body text-muted-foreground">({presentResidentsByUnit[unitName].length} résidents présents au déjeuner)</span>
                   </h2>
                   {categoryOrder.map(category => {
-                    const mealsInCategory = categorizedMeals[category];
+                    const mealsInCategory = categorizedMealsForDashboard[category];
                     if (!mealsInCategory || mealsInCategory.length === 0) return null;
 
                     const categoryHasContentForUnit = mealsInCategory.some(meal => 
                         unitMealDetails[meal.id] && Object.values(unitMealDetails[meal.id]).some(count => count > 0)
                     );
-                    if (!categoryHasContentForUnit && mealsToDisplay.length > 0) return null;
+                    if (!categoryHasContentForUnit && mealsToDisplayForDashboard.length > 0) return null;
 
                     return (
                       <div key={`${unitName}-${category}`} className="mb-4 last:mb-0">
@@ -417,11 +479,11 @@ export default function DashboardPage() {
                 </div>
               );
             })}
-            {mealsToDisplay.length === 0 && (
-                <p className="text-muted-foreground font-body text-center py-4">Aucun menu global chargé. Utilisez le bouton "Importer Menu Global".</p>
+            {mealsToDisplayForDashboard.length === 0 && (
+                <p className="text-muted-foreground font-body text-center py-4">Aucun menu à afficher pour aujourd'hui. Importez un planning Excel.</p>
             )}
-            {(mealsToDisplay.length > 0 && Object.keys(presentResidentsByUnit).every(unit => presentResidentsByUnit[unit].length === 0 || !categoryOrder.some(category => categorizedMeals[category]?.some(meal => mealPreparationDetailsByUnit[unit]?.[meal.id] && Object.values(mealPreparationDetailsByUnit[unit][meal.id]).some(count => count > 0))))) && (
-                 <p className="text-muted-foreground font-body text-center py-4">Menu chargé, mais aucun résident présent ou plat applicable pour les unités (vérifiez présences, allergies, régimes, textures).</p>
+            {(mealsToDisplayForDashboard.length > 0 && !initialMockMealsTodayForDashboard.includes(mealsToDisplayForDashboard[0]) && Object.keys(presentResidentsByUnit).every(unit => presentResidentsByUnit[unit].length === 0 || !categoryOrder.some(category => categorizedMealsForDashboard[category]?.some(meal => mealPreparationDetailsByUnit[unit]?.[meal.id] && Object.values(mealPreparationDetailsByUnit[unit][meal.id]).some(count => count > 0))))) && (
+                 <p className="text-muted-foreground font-body text-center py-4">Menu du jour chargé, mais aucun résident présent au déjeuner ou plat applicable pour les unités (vérifiez présences, allergies, régimes, textures).</p>
              )}
           </CardContent>
         </Card>
@@ -443,17 +505,17 @@ export default function DashboardPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {mockAttendance.filter(att => att.mealType === 'lunch').slice(0,4).map(att => {
+                  {mockAttendance.filter(att => att.mealType === 'lunch' && att.date === todayISO).slice(0,4).map(att => {
                     const resident = activeResidents.find(r => r.id === att.residentId);
                     return (
                       <TableRow key={att.id} className="font-body">
                         <TableCell className="flex items-center gap-2">
-                           <Image src={resident?.avatarUrl || "https://placehold.co/40x40.png"} alt={resident?.firstName || ""} width={24} height={24} className="rounded-full" data-ai-hint="person avatar" />
+                           <Image src={resident?.avatarUrl || "https://placehold.co/32x32.png"} alt={resident?.firstName || ""} width={24} height={24} className="rounded-full" data-ai-hint="person avatar" />
                           {resident ? `${resident.firstName} ${resident.lastName}` : 'N/A'}
                         </TableCell>
                         <TableCell>{resident?.unit || 'N/A'}</TableCell>
                         <TableCell>
-                          <Badge variant={att.status === 'present' ? 'default' : att.status === 'absent' ? 'destructive' : 'secondary'} className={att.status === 'present' ? 'bg-primary/20 text-primary-foreground' : ''}>
+                          <Badge variant={att.status === 'present' ? 'default' : att.status === 'absent' ? 'destructive' : 'secondary'} className={att.status === 'present' ? 'bg-green-100 text-green-700' : att.status === 'absent' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}>
                             {att.status === 'present' ? 'Présent(e)' : att.status === 'absent' ? 'Absent(e)' : 'Extérieur'}
                           </Badge>
                         </TableCell>
@@ -496,5 +558,3 @@ export default function DashboardPage() {
     </AppLayout>
   );
 }
-
-    
