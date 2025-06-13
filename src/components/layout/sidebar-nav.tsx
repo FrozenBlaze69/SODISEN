@@ -1,3 +1,4 @@
+
 'use client';
 
 import Link from 'next/link';
@@ -11,6 +12,7 @@ import {
   Settings,
   LucideIcon,
   Package,
+  Users, // Nouvelle icône pour Manage Residents
 } from 'lucide-react';
 import {
   SidebarMenu,
@@ -32,7 +34,8 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { href: '/', label: 'Tableau de Bord', icon: LayoutDashboard },
-  { href: '/residents', label: 'Résidents', icon: UsersRound },
+  { href: '/residents', label: 'Résidents (Infos)', icon: UsersRound },
+  { href: '/manage-residents', label: 'Gérer Résidents', icon: Users }, // Nouveau lien
   { href: '/menus', label: 'Menus', icon: CalendarDays },
   { href: '/attendance', label: 'Présences', icon: ClipboardList },
   { href: '/notifications', label: 'Notifications', icon: Bell },

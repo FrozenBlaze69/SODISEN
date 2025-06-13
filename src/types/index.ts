@@ -1,19 +1,20 @@
 
 export interface Resident {
   id: string;
-  firstName: string;
+  firstName: string; // Sera utilisé comme 'nom' pour la nouvelle fonctionnalité
   lastName: string;
   dateOfBirth?: string;
   roomNumber?: string;
-  dietaryRestrictions: string[]; // Consolidate diets here, or rename if diets field is preferred
+  dietaryRestrictions: string[];
   allergies: string[];
   medicalSpecificities: string;
-  isActive: boolean;
+  isActive: boolean; // Statut général (actif/inactif dans l'établissement)
+  present: boolean; // Statut de présence quotidien (présent/absent pour les repas par ex.)
   avatarUrl?: string;
-  unit: string; // Identificateur de l’unité MAS
+  unit: string;
   contraindications: string[];
-  textures: string[]; // e.g., ["Normal", "Mixé", "Haché"]
-  diets: string[]; // e.g., ["Sans sel", "Diabétique", "Végétarien"]
+  textures: string[];
+  diets: string[];
 }
 
 export interface Meal {
@@ -21,7 +22,7 @@ export interface Meal {
   name: string;
   description?: string;
   category: 'starter' | 'main' | 'dessert' | 'drink' | 'snack';
-  dietTags?: string[]; // General tags, can be used for global filtering
+  dietTags?: string[];
   allergenTags?: string[];
 }
 
@@ -39,7 +40,7 @@ export interface Menu {
   notes?: string;
 }
 
-export type AttendanceStatus = 'present' | 'absent' | 'external';
+export type AttendanceStatus = 'present' | 'absent' | 'external'; // Peut être utilisé pour une logique de présence plus détaillée
 
 export interface AttendanceRecord {
   id: string;
@@ -71,34 +72,24 @@ export interface User {
   avatarUrl?: string;
 }
 
-// Nouvelles interfaces
 export interface MenuPersonalized {
-  id: string; // Firestore document ID
+  id: string;
   residentId: string;
-  date: string; // YYYY-MM-DD
+  date: string;
+  items: Array<{ mealId: string; originalMealName: string; mealNameAdapted?: string; mealType: MealType; textureApplied: string; dietApplied: string[]; notes?: string; }>;
   unit: string;
-  items: Array<{
-    mealId: string;
-    originalMealName: string; // For reference
-    mealNameAdapted?: string; // If name changes due to adaptation
-    mealType: MealType;
-    textureApplied: string; // The specific texture applied for this resident
-    dietApplied: string[]; // Specific diets considered for this meal for this resident
-    notes?: string; // e.g., "Substituted X for Y due to allergy"
-  }>;
 }
 
 export interface UnitSummary {
   unit: string;
-  date: string; // YYYY-MM-DD
+  date: string;
   items: Array<{
-    mealId: string; // Could be an aggregation if multiple original meals lead to same displayed item
-    mealName: string; // Name of the meal item for the unit (could be generic)
+    mealId: string;
+    mealName: string;
     mealType: MealType;
-    totalCount: number; // Total for this meal item in this unit
-    textures: Record<string, number>; // e.g., { "Normal": 10, "Mixé": 5 }
-    diets: Record<string, number>; // e.g., { "Sans Sel": 8, "Végétarien": 2 }
-    // allergenAvoidances?: Record<string, number>; // How many instances avoided specific allergens
+    totalCount: number;
+    textures: Record<string, number>;
+    diets: Record<string, number>;
   }>;
-  notes?: string; // General notes for the unit's preparation
+  notes?: string;
 }
