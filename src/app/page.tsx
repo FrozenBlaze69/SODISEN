@@ -7,10 +7,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Label } from '@/components/ui/label';
 import type { Notification, Resident, AttendanceRecord, Meal } from '@/types';
-import { AlertTriangle, CheckCircle2, Info, Users, UtensilsCrossed, BellRing, ClipboardCheck, Upload } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Info, Users, UtensilsCrossed, BellRing, ClipboardCheck, Upload, Plus, Minus } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { Input } from '@/components/ui/input';
@@ -18,7 +16,7 @@ import { useToast } from "@/hooks/use-toast";
 import { handleMenuUpload } from './actions';
 
 // Mock Data
-const today = new Date().toISOString().split('T')[0]; // This is fine for mock data context if dates are relative to a "fixed" today for mocks.
+const today = new Date().toISOString().split('T')[0]; 
 
 const mockResidents: Resident[] = [
   { id: '1', firstName: 'Jean', lastName: 'Dupont', roomNumber: '101A', dietaryRestrictions: ['Sans sel'], allergies: ['Arachides'], medicalSpecificities: 'Diabète type 2', isActive: true, avatarUrl: 'https://placehold.co/40x40.png' },
@@ -39,13 +37,13 @@ const mockAttendance: AttendanceRecord[] = [
 ];
 
 const initialMockMealsToday: Meal[] = [
-  { id: 's1', name: 'Velouté de Carottes au Cumin', category: 'starter', dietTags: ['Végétarien', 'Sans Sel'], allergenTags: [] },
-  { id: 's2', name: 'Salade Composée du Chef', category: 'starter', dietTags: [], allergenTags: ['Gluten'] },
-  { id: 'm1', name: 'Boeuf Bourguignon Traditionnel', category: 'main', dietTags: [], allergenTags: [] },
-  { id: 'm2', name: 'Filet de Cabillaud Vapeur, Sauce Citronnée', category: 'main', dietTags: ['Sans Sel'], allergenTags: [] },
-  { id: 'm3', name: 'Curry de Légumes aux Lentilles Corail', category: 'main', dietTags: ['Végétarien'], allergenTags: [] },
-  { id: 'd1', name: 'Crème Caramel Maison', category: 'dessert', dietTags: [], allergenTags: ['Oeuf', 'Lactose'] },
-  { id: 'd2', name: 'Compote de Pommes Cannelle', category: 'dessert', dietTags: ['Végétarien', 'Sans Sel'], allergenTags: [] },
+  { id: 's1', name: 'Velouté de Carottes au Cumin', category: 'starter', dietTags: ['Végétarien', 'Sans Sel'], allergenTags: [], description: "Un velouté doux et parfumé, parfait pour commencer le repas." },
+  { id: 's2', name: 'Salade Composée du Chef', category: 'starter', dietTags: [], allergenTags: ['Gluten'], description: "Salade fraîcheur avec croûtons et vinaigrette maison." },
+  { id: 'm1', name: 'Boeuf Bourguignon Traditionnel', category: 'main', dietTags: [], allergenTags: [], description: "Un classique de la cuisine française, mijoté lentement." },
+  { id: 'm2', name: 'Filet de Cabillaud Vapeur, Sauce Citronnée', category: 'main', dietTags: ['Sans Sel'], allergenTags: [], description: "Poisson léger accompagné d'une sauce acidulée." },
+  { id: 'm3', name: 'Curry de Légumes aux Lentilles Corail', category: 'main', dietTags: ['Végétarien'], allergenTags: [], description: "Plat végétarien savoureux et nutritif." },
+  { id: 'd1', name: 'Crème Caramel Maison', category: 'dessert', dietTags: [], allergenTags: ['Oeuf', 'Lactose'], description: "Dessert onctueux et gourmand." },
+  { id: 'd2', name: 'Compote de Pommes Cannelle', category: 'dessert', dietTags: ['Végétarien', 'Sans Sel'], allergenTags: [], description: "Une compote simple et réconfortante." },
 ];
 
 const mockDateReference = new Date('2024-07-15T10:00:00.000Z');
@@ -65,7 +63,7 @@ const getPreparationTypeForResident = (resident: Resident): PreparationType => {
 };
 
 export default function DashboardPage() {
-  const [mealPreparationStatus, setMealPreparationStatus] = useState<Record<string, boolean>>({});
+  const [mealPreparationStatus, setMealPreparationStatus] = useState<Record<string, { target: number; current: number }>>({});
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importedMenuData, setImportedMenuData] = useState<Meal[] | null>(null);
@@ -110,10 +108,6 @@ export default function DashboardPage() {
       default:
         return <CheckCircle2 className="h-5 w-5 text-green-500" />;
     }
-  };
-
-  const handleMealStatusChange = (mealPrepKey: string, isReady: boolean) => {
-    setMealPreparationStatus(prev => ({ ...prev, [mealPrepKey]: isReady }));
   };
 
   const categorizedMeals: Record<string, Meal[]> = useMemo(() =>
@@ -163,6 +157,46 @@ export default function DashboardPage() {
     });
     return details;
   }, [presentResidents, mealsToDisplay]);
+
+  useEffect(() => {
+    setMealPreparationStatus(prevStatus => {
+        const newStatusMap: Record<string, { target: number; current: number }> = {};
+        Object.keys(mealPreparationDetails).forEach(mealId => {
+            const mealDetails = mealPreparationDetails[mealId];
+            if (mealDetails) { // Check if mealDetails is defined
+                (Object.keys(mealDetails) as PreparationType[]).forEach(prepType => {
+                    const target = mealDetails[prepType];
+                    if (target > 0) {
+                        const key = `meal-${mealId}-prep-${prepType}`;
+                        const existing = prevStatus[key];
+                        newStatusMap[key] = {
+                            target: target,
+                            current: (existing && existing.target === target) ? existing.current : target,
+                        };
+                    }
+                });
+            }
+        });
+        return newStatusMap;
+    });
+  }, [mealPreparationDetails]);
+
+  const handleQuantityChange = (mealPrepKey: string, delta: number) => {
+    setMealPreparationStatus(prev => {
+        const currentEntry = prev[mealPrepKey];
+        if (!currentEntry) return prev; 
+
+        const newCurrent = Math.max(0, currentEntry.current + delta);
+        return {
+            ...prev,
+            [mealPrepKey]: {
+                ...currentEntry,
+                current: newCurrent,
+            },
+        };
+    });
+  };
+
 
   const onFileUpload = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -284,7 +318,7 @@ export default function DashboardPage() {
                 </form>
             </div>
             <CardDescription className="font-body mt-2">
-              Détail des préparations pour les résidents présents. Cochez si prêt. Importez un fichier Excel pour mettre à jour le menu.
+              Ajustez les quantités à préparer pour les résidents présents. Importez un fichier Excel pour mettre à jour le menu.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -313,23 +347,41 @@ export default function DashboardPage() {
                         <div key={meal.id} className="p-3 rounded-lg border bg-card hover:bg-muted/50 transition-colors">
                           <p className="font-semibold font-body text-md mb-2">{meal.name}</p>
                           {meal.description && <p className="text-xs text-muted-foreground mb-2">{meal.description}</p>}
-                          <div className="space-y-2 pl-4">
+                          <div className="space-y-2 pl-1">
                             {(Object.keys(preparations) as PreparationType[]).map(prepType => {
-                              const count = preparations[prepType];
-                              if (count === 0) return null;
+                              const targetCount = preparations[prepType];
+                              if (targetCount === 0) return null;
                               const mealPrepKey = `meal-${meal.id}-prep-${prepType}`;
+                              const currentQuantity = mealPreparationStatus[mealPrepKey]?.current ?? targetCount;
+                              
                               return (
-                                <div key={mealPrepKey} className="flex items-center justify-between">
-                                  <div className="flex items-center gap-2">
-                                    <Checkbox
-                                      id={mealPrepKey}
-                                      checked={!!mealPreparationStatus[mealPrepKey]}
-                                      onCheckedChange={(checked) => handleMealStatusChange(mealPrepKey, !!checked)}
-                                      aria-label={`Marquer ${meal.name} (${prepType}) comme prêt`}
-                                    />
-                                    <Label htmlFor={mealPrepKey} className="font-body text-sm cursor-pointer">
-                                      {prepType}: <span className="font-semibold">{count} portion{count > 1 ? 's' : ''}</span>
-                                    </Label>
+                                <div key={mealPrepKey} className="flex items-center justify-between py-1">
+                                  <p className="font-body text-sm">
+                                    {prepType}: <span className="text-xs text-muted-foreground">(Prévu: {targetCount})</span>
+                                  </p>
+                                  <div className="flex items-center gap-1">
+                                    <Button 
+                                      variant="outline" 
+                                      size="icon" 
+                                      className="h-7 w-7" 
+                                      onClick={() => handleQuantityChange(mealPrepKey, -1)}
+                                      disabled={currentQuantity === 0}
+                                      aria-label={`Diminuer quantité ${meal.name} ${prepType}`}
+                                    >
+                                      <Minus className="h-4 w-4" />
+                                    </Button>
+                                    <span className="font-body font-semibold text-center w-10 text-base tabular-nums">
+                                      {currentQuantity}
+                                    </span>
+                                    <Button 
+                                      variant="outline" 
+                                      size="icon" 
+                                      className="h-7 w-7" 
+                                      onClick={() => handleQuantityChange(mealPrepKey, 1)}
+                                      aria-label={`Augmenter quantité ${meal.name} ${prepType}`}
+                                    >
+                                      <Plus className="h-4 w-4" />
+                                    </Button>
                                   </div>
                                 </div>
                               );
