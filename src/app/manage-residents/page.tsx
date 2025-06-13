@@ -11,7 +11,9 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Trash2, UserPlus, Loader2 } from 'lucide-react';
 import type { Resident } from '@/types';
-import { onResidentsUpdate, addResidentToFirestore, updateResidentPresenceInFirestore, deleteResidentFromFirestore } from '@/lib/firebase/firestoreService';
+// Updated import path for onResidentsUpdate
+import { onResidentsUpdate } from '@/lib/firebase/firestoreClientService'; 
+import { addResidentToFirestore, updateResidentPresenceInFirestore, deleteResidentFromFirestore } from '@/lib/firebase/firestoreService';
 import { useToast } from "@/hooks/use-toast";
 
 export default function ManageResidentsPage() {
@@ -27,7 +29,6 @@ export default function ManageResidentsPage() {
       setResidents(updatedResidents);
       setIsLoading(false);
     });
-    // Nettoyage de l'abonnement lorsque le composant est démonté
     return () => unsubscribe();
   }, []);
 
@@ -52,7 +53,6 @@ export default function ManageResidentsPage() {
   const handleTogglePresence = async (residentId: string, currentPresence: boolean) => {
     try {
       await updateResidentPresenceInFirestore(residentId, !currentPresence);
-      // La mise à jour de l'UI se fera via le listener onSnapshot
       toast({ title: "Statut mis à jour", description: `Présence de ${residents.find(r => r.id === residentId)?.firstName} mise à jour.` });
     } catch (error) {
       console.error("Failed to update presence: ", error);
