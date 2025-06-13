@@ -17,18 +17,17 @@ export function onResidentsUpdate(callback: (residents: Resident[]) => void): ()
         id: doc.id,
         firstName: data.firstName || "",
         lastName: data.lastName || "",
-        present: data.present === undefined ? true : data.present,
         isActive: data.isActive === undefined ? true : data.isActive,
-        dietaryRestrictions: data.dietaryRestrictions || [],
         allergies: data.allergies || [],
         medicalSpecificities: data.medicalSpecificities || "",
         unit: data.unit || "Non assignée",
         contraindications: data.contraindications || [],
-        textures: data.textures || ["Normal"],
-        diets: data.diets || [],
+        textures: data.textures || [], // Defaulting to empty array if not present
+        diets: data.diets || [],       // Defaulting to empty array if not present
         dateOfBirth: data.dateOfBirth,
         roomNumber: data.roomNumber,
         avatarUrl: data.avatarUrl,
+        // createdAt is implicitly handled by Firestore and available in doc.metadata or via serverTimestamp on write
       });
     });
     callback(residentsList);
@@ -38,3 +37,4 @@ export function onResidentsUpdate(callback: (residents: Resident[]) => void): ()
 
   return unsubscribe; // Returns the function to unsubscribe
 }
+
