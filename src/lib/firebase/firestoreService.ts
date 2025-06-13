@@ -3,7 +3,7 @@
 
 import { db } from './config';
 import { collection, addDoc, updateDoc, doc, deleteDoc, serverTimestamp } from "firebase/firestore";
-import { RESIDENTS_COLLECTION } from './constants'; // Import the constant
+import { RESIDENTS_COLLECTION } from './constants';
 
 // Functions like addResidentToFirestore, updateResidentPresenceInFirestore, deleteResidentFromFirestore remain here
 
