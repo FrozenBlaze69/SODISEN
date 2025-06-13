@@ -13,6 +13,7 @@ import {
   LucideIcon,
   Package,
   Users, // Nouvelle icône pour Manage Residents
+  BookMarked, // Nouvelle icône pour Réservations
 } from 'lucide-react';
 import {
   SidebarMenu,
@@ -35,8 +36,9 @@ interface NavItem {
 const navItems: NavItem[] = [
   { href: '/', label: 'Tableau de Bord', icon: LayoutDashboard },
   { href: '/residents', label: 'Résidents (Infos)', icon: UsersRound },
-  { href: '/manage-residents', label: 'Gérer Résidents', icon: Users }, // Nouveau lien
+  { href: '/manage-residents', label: 'Gérer Résidents', icon: Users },
   { href: '/menus', label: 'Menus', icon: CalendarDays },
+  { href: '/reservations', label: 'Réservations', icon: BookMarked },
   { href: '/attendance', label: 'Présences', icon: ClipboardList },
   { href: '/notifications', label: 'Notifications', icon: Bell },
   { href: '/settings', label: 'Paramètres', icon: Settings, 

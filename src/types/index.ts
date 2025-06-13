@@ -5,6 +5,7 @@ export interface Resident {
   lastName: string;
   dateOfBirth?: string; 
   roomNumber?: string;
+  // dietaryRestrictions: string[]; // Déprécié, utiliser diets et textures
   allergies: string[];
   medicalSpecificities: string; 
   isActive: boolean; 
@@ -109,4 +110,25 @@ export interface UnitSummary {
     diets: Record<string, number>; // ex: { "Sans Sel": 5, "Végétarien": 1 }
   }>;
   notes?: string; 
+}
+
+// Pour les réservations de repas par les familles/AS
+export interface MealReservation {
+  id: string; // ID de la réservation
+  residentId: string;
+  residentName?: string; // Pour affichage facile
+  mealDate: string; // YYYY-MM-DD
+  mealType: 'lunch' | 'dinner';
+  numberOfGuests: number; // Nombre d'invités EN PLUS du résident
+  comments?: string;
+  reservedBy: string; // ID ou nom de l'utilisateur ayant fait la réservation
+  createdAt: any; // Firestore timestamp
+}
+
+export interface MealReservationFormData {
+  residentId: string;
+  mealDate: Date;
+  mealType: 'lunch' | 'dinner';
+  numberOfGuests: number;
+  comments?: string;
 }

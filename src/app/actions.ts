@@ -3,7 +3,7 @@
 
 import { z } from 'zod';
 import * as XLSX from 'xlsx';
-import type { Meal, WeeklyDayPlan, PlannedMealItem, DailyPlannedMeals } from '@/types';
+import type { Meal, WeeklyDayPlan, PlannedMealItem, DailyPlannedMeals, MealReservationFormData } from '@/types';
 import { format, parseISO, isValid } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
@@ -38,8 +38,7 @@ const FileUploadResponseSchema = z.object({
   message: z.string().optional(),
   fileName: z.string().optional(),
   fileSize: z.number().optional(),
-  menuData: z.array(z.custom<WeeklyDayPlan>()).optional(), // Maintenant, c'est un planning hebdomadaire
-  // allMealsForDashboard: z.array(z.custom<Meal>()).optional(), // Si on veut aussi la liste plate pour le dashboard
+  menuData: z.array(z.custom<WeeklyDayPlan>()).optional(), 
 });
 
 export type FileUploadResponse = z.infer<typeof FileUploadResponseSchema>;
@@ -48,7 +47,6 @@ function excelSerialDateToJSDate(serial: number) {
     const utc_days  = Math.floor(serial - 25569);
     const utc_value = utc_days * 86400;                                        
     const date_info = new Date(utc_value * 1000);
-    // Adjust for timezone offset to get correct local date
     return new Date(date_info.getFullYear(), date_info.getMonth(), date_info.getDate());
 }
 
@@ -67,44 +65,40 @@ export async function handleMenuUpload(formData: FormData): Promise<FileUploadRe
   try {
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
-    const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true }); // cellDates: true est important
+    const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true }); 
     const sheetName = workbook.SheetNames[0];
     if (!sheetName) {
       return { success: false, message: 'Le fichier Excel est vide ou ne contient pas de feuilles.' };
     }
     const worksheet = workbook.Sheets[sheetName];
-    const jsonData = XLSX.utils.sheet_to_json(worksheet, { raw: false, dateNF: 'yyyy-mm-dd'}); // raw: false pour avoir les dates formatées
+    const jsonData = XLSX.utils.sheet_to_json(worksheet, { raw: false, dateNF: 'yyyy-mm-dd'}); 
 
     const weeklyPlans: Record<string, WeeklyDayPlan> = {};
     const errors: string[] = [];
 
     jsonData.forEach((row: any, index) => {
-      // Pre-format date if it's an Excel serial number (sometimes sheet_to_json with cellDates doesn't fully handle it)
       if (typeof row['Date'] === 'number') {
           row['Date'] = format(excelSerialDateToJSDate(row['Date']), 'yyyy-MM-dd');
       } else if (row['Date'] instanceof Date) {
           row['Date'] = format(row['Date'], 'yyyy-MM-dd');
       }
-      // If date is still not a string or parseable, attempt to handle DD/MM/YYYY
       if (typeof row['Date'] === 'string' && row['Date'].includes('/')) {
         const parts = row['Date'].split('/');
         if (parts.length === 3) {
-          // Assuming DD/MM/YYYY
           row['Date'] = `${parts[2]}-${parts[1]}-${parts[0]}`;
         }
       }
 
-
       const validationResult = ExcelWeeklyPlanRowSchema.safeParse(row);
       if (validationResult.success) {
         const data = validationResult.data;
-        const dateStr = data['Date']; // Already formatted to yyyy-MM-dd by zod or pre-formatting
+        const dateStr = data['Date']; 
         
         if (!weeklyPlans[dateStr]) {
           let dayOfWeek = data['Jour'];
           if (!dayOfWeek) {
              try {
-                dayOfWeek = format(parseISO(dateStr), 'EEEE', { locale: fr }); // 'EEEE' for full day name e.g. Lundi
+                dayOfWeek = format(parseISO(dateStr), 'EEEE', { locale: fr }); 
              } catch (e) {
                 errors.push(`Ligne ${index + 2}: Jour non fourni et date '${dateStr}' non parsable pour déduire le jour.`);
                 return;
@@ -182,4 +176,59 @@ export async function handleMenuUpload(formData: FormData): Promise<FileUploadRe
     }
     return { success: false, message: errorMessage };
   }
+}
+
+// Schéma pour la réservation de repas
+const MealReservationFormSchema = z.object({
+  residentId: z.string().min(1, "Veuillez sélectionner un résident."),
+  mealDate: z.date({
+    required_error: "La date du repas est requise.",
+    invalid_type_error: "Format de date invalide.",
+  }),
+  mealType: z.enum(['lunch', 'dinner'], {
+    required_error: "Le type de repas est requis.",
+  }),
+  numberOfGuests: z.coerce.number().min(0, "Le nombre d'invités doit être positif ou nul.").int("Le nombre d'invités doit être un nombre entier."),
+  comments: z.string().optional(),
+});
+
+export async function handleMealReservation(
+  data: MealReservationFormData
+): Promise<{ success: boolean; message: string; reservationDetails?: any }> {
+  const validationResult = MealReservationFormSchema.safeParse(data);
+
+  if (!validationResult.success) {
+    return {
+      success: false,
+      message: "Données de réservation invalides: " + validationResult.error.flatten().fieldErrors,
+    };
+  }
+
+  const { residentId, mealDate, mealType, numberOfGuests, comments } = validationResult.data;
+
+  // TODO: Remplacer par une vraie sauvegarde Firestore
+  // Pour l'instant, on simule la sauvegarde et on logue les données
+  const reservationDetailsToSave = {
+    residentId,
+    mealDate: format(mealDate, 'yyyy-MM-dd'), // Formater la date pour la sauvegarde/log
+    mealType,
+    numberOfGuests,
+    comments: comments || '',
+    reservedBy: "CURRENT_USER_PLACEHOLDER", // À remplacer par l'ID/nom de l'utilisateur connecté
+    createdAt: new Date().toISOString(), // Simuler un timestamp
+  };
+
+  console.log("Tentative de sauvegarde de la réservation :", reservationDetailsToSave);
+
+  // Simulation d'une sauvegarde réussie
+  // Dans un cas réel, vous appelleriez ici une fonction pour écrire dans Firestore
+  // et vous géreriez les erreurs potentielles de cette écriture.
+
+  // const reservationId = await saveReservationToFirestore(reservationDetailsToSave);
+
+  return {
+    success: true,
+    message: `Réservation pour ${numberOfGuests} invité(s) le ${format(mealDate, 'dd/MM/yyyy')} (${mealType === 'lunch' ? 'Déjeuner' : 'Dîner'}) enregistrée avec succès.`,
+    reservationDetails: reservationDetailsToSave,
+  };
 }
