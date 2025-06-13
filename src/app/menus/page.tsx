@@ -5,7 +5,7 @@ import React, { useState, useEffect } from 'react';
 import { AppLayout } from '@/components/layout/app-layout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { CalendarDays, PlusCircle, FileImport } from 'lucide-react';
+import { CalendarDays, PlusCircle, Import } from 'lucide-react'; // Remplacement de FileImport par Import
 import type { WeeklyDayPlan } from '@/types';
 import { format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -106,7 +106,7 @@ export default function MenusPage() {
               </>
             ) : (
               <div className="text-center py-10 text-muted-foreground font-body">
-                <FileImport className="h-12 w-12 mx-auto mb-4" />
+                <Import className="h-12 w-12 mx-auto mb-4" /> {/* Remplacement de FileImport par Import */}
                 <p>Aucun planning hebdomadaire n'a été importé.</p>
                 <p>Veuillez importer un fichier Excel depuis le <Link href="/" className="text-primary hover:underline">Tableau de Bord</Link> pour afficher le planning ici.</p>
               </div>
