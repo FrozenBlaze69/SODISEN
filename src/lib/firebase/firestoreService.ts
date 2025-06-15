@@ -1,6 +1,9 @@
 
 'use server'; 
 
+// Ce fichier contient la logique backend (Server Actions) pour interagir avec Firestore.
+// Toutes les fonctions exportées ici s'exécutent côté serveur.
+
 import { db } from './config';
 import { collection, addDoc, updateDoc, doc, deleteDoc, serverTimestamp, setDoc } from "firebase/firestore";
 import { RESIDENTS_COLLECTION } from './constants';
@@ -55,3 +58,4 @@ export async function deleteResidentFromFirestore(residentId: string): Promise<v
         throw new Error("Could not delete resident");
     }
 }
+
