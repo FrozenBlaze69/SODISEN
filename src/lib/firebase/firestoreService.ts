@@ -3,6 +3,8 @@
 
 // Ce fichier contient la logique backend (Server Actions) pour interagir avec Firestore.
 // Toutes les fonctions exportées ici s'exécutent côté serveur.
+// RÔLE BACKEND : Ce fichier agit comme votre backend pour les opérations sur les résidents.
+// Il communique directement avec Firebase Firestore pour lire et écrire des données.
 
 import { db } from './config';
 import { collection, addDoc, updateDoc, doc, deleteDoc, serverTimestamp, setDoc } from "firebase/firestore";
@@ -22,29 +24,41 @@ export async function addOrUpdateResident(residentData: ResidentFormData, reside
       contraindications: residentData.contraindications || [],
       textures: residentData.textures || [],
       diets: residentData.diets || [],
-      updatedAt: serverTimestamp(),
+      updatedAt: serverTimestamp(), // Toujours mettre à jour 'updatedAt'
     };
 
     if (residentId) {
       // Mise à jour d'un résident existant
       const residentDocRef = doc(db, RESIDENTS_COLLECTION, residentId);
-      await setDoc(residentDocRef, dataWithTimestamp, { merge: true }); // merge: true pour ne pas écraser les champs non fournis
+      // Utiliser setDoc avec merge: true pour mettre à jour ou créer si l'ID est connu mais le doc n'existe pas (moins probable ici)
+      // ou pour ne pas écraser les champs non fournis si on ne les envoie pas tous.
+      await setDoc(residentDocRef, dataWithTimestamp, { merge: true }); 
       return residentId;
     } else {
       // Ajout d'un nouveau résident
       const dataForAdd = {
         ...dataWithTimestamp,
-        createdAt: serverTimestamp(),
+        createdAt: serverTimestamp(), // Ajouter 'createdAt' uniquement pour les nouveaux résidents
       };
       const docRef = await addDoc(collection(db, RESIDENTS_COLLECTION), dataForAdd);
       return docRef.id;
     }
   } catch (e) {
-    console.error("Error adding or updating document: ", e);
+    // Log de l'erreur côté serveur pour le débogage
+    console.error("Error adding or updating document to Firestore: ", e);
+
+    // Construction d'un message d'erreur plus explicite
+    let errorMessage = "Could not save resident due to an unknown server error.";
     if (e instanceof Error) {
-      throw new Error(`Could not save resident: ${e.message}`);
+      // e.message contient souvent des informations utiles de Firebase (ex: "Missing or insufficient permissions.")
+      errorMessage = `Could not save resident: ${e.message}`;
+    } else if (typeof e === 'string') {
+      errorMessage = `Could not save resident: ${e}`;
+    } else if (e && typeof e === 'object' && 'toString' in e) {
+      errorMessage = `Could not save resident: ${e.toString()}`;
     }
-    throw new Error("Could not save resident due to an unknown error.");
+    // Renvoyer l'erreur pour qu'elle puisse être attrapée par le client (et affichée dans le toast)
+    throw new Error(errorMessage);
   }
 }
 
@@ -54,8 +68,24 @@ export async function deleteResidentFromFirestore(residentId: string): Promise<v
         const residentDocRef = doc(db, RESIDENTS_COLLECTION, residentId);
         await deleteDoc(residentDocRef);
     } catch (e) {
-        console.error("Error deleting document: ", e);
-        throw new Error("Could not delete resident");
+        console.error("Error deleting document from Firestore: ", e);
+        let errorMessage = "Could not delete resident due to an unknown server error.";
+        if (e instanceof Error) {
+            errorMessage = `Could not delete resident: ${e.message}`;
+        } else if (typeof e === 'string') {
+            errorMessage = `Could not delete resident: ${e}`;
+        } else if (e && typeof e === 'object' && 'toString' in e) {
+            errorMessage = `Could not delete resident: ${e.toString()}`;
+        }
+        throw new Error(errorMessage);
     }
 }
 
+// NOTE POUR LE DÉVELOPPEMENT :
+// Si vous rencontrez des erreurs lors de l'ajout/modification/suppression :
+// 1. VÉRIFIEZ LA CONFIGURATION FIREBASE : src/lib/firebase/config.ts doit avoir les bonnes clés.
+// 2. VÉRIFIEZ LES RÈGLES DE SÉCURITÉ FIRESTORE : Dans la console Firebase, assurez-vous que les écritures
+//    sont autorisées pour la collection 'residents'. Pour le dev, des règles ouvertes comme
+//    `allow read, write: if true;` peuvent être utilisées TEMPORAIREMENT.
+// 3. CONSULTEZ LA CONSOLE DU NAVIGATEUR ET DU SERVEUR (TERMINAL NEXTJS) : Des messages d'erreur
+//    plus détaillés y apparaîtront.
