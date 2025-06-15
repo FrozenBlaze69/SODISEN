@@ -54,7 +54,7 @@ export interface AttendanceRecord {
 export interface Notification {
   id:string;
   timestamp: string; // ISO date string
-  type: 'attendance' | 'absence' | 'outing' | 'allergy_alert' | 'emergency' | 'info';
+  type: 'attendance' | 'absence' | 'outing' | 'allergy_alert' | 'emergency' | 'info' | 'attendance_reminder';
   title: string;
   message: string;
   isRead: boolean;

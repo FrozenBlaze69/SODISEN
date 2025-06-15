@@ -6,7 +6,7 @@ import { AppLayout } from '@/components/layout/app-layout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import type { Notification } from '@/types';
-import { AlertTriangle, CheckCircle2, Info, Bell, Trash2, Eye } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Info, Bell, Trash2, Eye, Clock } from 'lucide-react';
 
 // Fixed reference date for mock data
 const mockDateReference = new Date('2024-07-15T10:00:00.000Z');
@@ -16,14 +16,15 @@ const mockNotificationsInitial: Notification[] = [
   { id: '1', timestamp: new Date(mockDateReference.getTime() - 3600000).toISOString(), type: 'absence', title: 'Absence Imprévue', message: 'Paul Martin ne prendra pas son repas ce midi (Raison: RDV médical).', isRead: false, relatedResidentId: '1' },
   { id: '2', timestamp: new Date(mockDateReference.getTime() - 7200000).toISOString(), type: 'outing', title: 'Sortie Extérieure', message: 'Paola Leroy déjeune en famille ce midi.', isRead: true, relatedResidentId: '2' },
   { id: '3', timestamp: new Date(mockDateReference.getTime() - 10800000).toISOString(), type: 'info', title: 'Présence Confirmée', message: 'Tous les résidents de l\'étage A sont présents pour le déjeuner.', isRead: true },
-  { id: '4', timestamp: new Date(mockDateReference.getTime() - 86400000).toISOString(), type: 'allergy_alert', title: 'Alerte Allergie Cuisine', message: 'Attention: Jean Dupont est allergique aux arachides. Vérifiez la préparation du plat n°3.', isRead: false },
-  { id: '5', timestamp: new Date(mockDateReference.getTime() - 172800000).toISOString(), type: 'emergency', title: 'URGENCE MÉDICALE', message: 'Chute de Mme. Petit dans la chambre 203. Intervention infirmière en cours.', isRead: true },
+  { id: '4', timestamp: new Date(mockDateReference.getTime() - 86400000).toISOString(), type: 'allergy_alert', title: 'Alerte Allergie Cuisine', message: 'Attention: Jean Dupont est allergique aux arachides. Vérifiez la préparation du plat n°3.', isRead: false, relatedResidentId: '1'},
+  { id: '7', timestamp: new Date(mockDateReference.getTime() - 1800000).toISOString(), type: 'attendance_reminder', title: 'Rappel Présence Manquante (Déjeuner)', message: 'La présence de Sophie Petit (Ch. 203C) pour le déjeuner doit être enregistrée.', isRead: false, relatedResidentId: '6'},
+  { id: '5', timestamp: new Date(mockDateReference.getTime() - 172800000).toISOString(), type: 'emergency', title: 'URGENCE MÉDICALE', message: 'Chute de Mme. Petit dans la chambre 203. Intervention infirmière en cours.', isRead: true, relatedResidentId: '6' },
   { id: '6', timestamp: new Date(mockDateReference.getTime() - 259200000).toISOString(), type: 'info', title: 'Menu de la semaine publié', message: 'Le menu de la semaine prochaine est disponible pour consultation.', isRead: true },
 ];
 
 
 export default function NotificationsPage() {
-  const [notifications, setNotifications] = useState<Notification[]>(mockNotificationsInitial);
+  const [notifications, setNotifications] = useState<Notification[]>(mockNotificationsInitial.sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
   const [clientSideRendered, setClientSideRendered] = useState(false);
 
   useEffect(() => {
@@ -39,6 +40,10 @@ export default function NotificationsPage() {
       case 'absence':
       case 'outing':
         return <Info className="h-6 w-6 text-yellow-500" />;
+      case 'attendance_reminder':
+        return <Clock className="h-6 w-6 text-orange-500" />;
+      case 'info':
+      case 'attendance':
       default:
         return <CheckCircle2 className="h-6 w-6 text-green-500" />;
     }
