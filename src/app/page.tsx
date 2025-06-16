@@ -122,7 +122,7 @@ export default function DashboardPage() {
             variant: "destructive",
             duration: 10000,
         });
-        setAllResidents([]); // Utiliser un tableau vide en cas d'erreur majeure
+        setAllResidents([]); 
         setIsLoadingResidents(false);
     });
     return () => unsubscribe();
@@ -365,9 +365,12 @@ export default function DashboardPage() {
                         return <> Aucun planning Excel n'est actuellement chargé pour la semaine. Affichage basé sur le menu par défaut pour le déjeuner.</>;
                         }
                         const todayPlan = importedWeeklyPlan.find(dayPlan => isToday(parseISO(dayPlan.date)));
-                        if (todayPlan) { 
+                        if (todayPlan && (todayPlan.meals.lunch.starter || todayPlan.meals.lunch.main || todayPlan.meals.lunch.dessert)) {
+                             return <> Planning <strong>{importedFileName}</strong> chargé. Le menu du jour en provient s'il est complet pour le déjeuner.</>;
+                        } else if (todayPlan) { 
                             return <> Planning <strong>{importedFileName}</strong> chargé, mais il ne contient pas de plats spécifiés pour le déjeuner d'aujourd'hui (vérifiez 'TypeRepas' et 'RolePlat' dans l'Excel). Affichage basé sur le menu par défaut.</>;
-                        } else { 
+                        }
+                         else { 
                             return <> Planning <strong>{importedFileName}</strong> chargé, mais aucun menu n'y est défini pour la date d'aujourd'hui. Affichage basé sur le menu par défaut.</>;
                         }
                     })()
@@ -378,25 +381,48 @@ export default function DashboardPage() {
                 {importedFileName && <Button variant="link" size="sm" className="p-0 h-auto text-xs ml-1" onClick={clearImportedPlan}>Effacer le planning importé</Button>}
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent>
             {isLoadingResidents ? (
-                <div className="flex justify-center items-center py-10"><Loader2 className="h-8 w-8 animate-spin text-primary" /><p className="ml-2 font-body text-muted-foreground">Chargement des données de préparation...</p></div>
+                <div className="flex justify-center items-center py-10">
+                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                    <p className="ml-2 font-body text-muted-foreground">Chargement des données de préparation...</p>
+                </div>
             ) : presentForLunchCount > 0 ? (
-                ALL_PREPARATION_TYPES.map(prepType => {
-                    const count = globalTextureCountsForLunch[prepType];
-                    if (count === 0 && prepType !== 'Normal') return null; // Ne pas afficher si 0, sauf pour "Normal" s'il est le seul
-                    return (
-                        <div key={prepType} className="flex items-center justify-between p-3 rounded-md border bg-background hover:bg-muted/30 transition-colors">
-                            <p className="font-body text-md font-medium">{prepType}</p>
-                            <Badge variant={count > 0 ? "default" : "outline"} className="text-md px-3 py-1">{count}</Badge>
-                        </div>
-                    );
-                })
+                <>
+                    {ALL_PREPARATION_TYPES.map(prepType => {
+                        const count = globalTextureCountsForLunch[prepType];
+                        if (count === 0) return null; 
+
+                        return (
+                            <div key={prepType} className="py-3 px-4 rounded-lg border mb-3 bg-background shadow-sm last:mb-0">
+                                <div className="flex items-center justify-between mb-2">
+                                    <p className="font-body text-lg font-semibold text-primary">{prepType}</p>
+                                    <Badge variant="default" className="text-md px-3 py-1">{count}</Badge>
+                                </div>
+                                {mealsToDisplayForDashboard.length > 0 ? (
+                                    <div>
+                                        <h4 className="text-sm font-body font-medium text-muted-foreground mb-1">Plats du menu concernés :</h4>
+                                        <ul className="list-disc list-inside text-sm font-body space-y-0.5 ml-4">
+                                            {mealsToDisplayForDashboard.map(meal => (
+                                                <li key={`${prepType}-${meal.id}`}>
+                                                    {meal.name}
+                                                    <span className="text-xs text-muted-foreground ml-1">({meal.category})</span>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                ) : (
+                                    <p className="text-sm font-body text-muted-foreground italic">Menu du déjeuner non spécifié (utilisation du menu par défaut).</p>
+                                )}
+                            </div>
+                        );
+                    })}
+                    {Object.values(globalTextureCountsForLunch).every(c => c === 0) && (
+                         <p className="text-muted-foreground font-body text-center py-4">Aucune texture spécifique n'est requise pour les résidents présents, ou les données de texture sont manquantes.</p>
+                    )}
+                </>
             ) : (
                  <p className="text-muted-foreground font-body text-center py-4">Aucun résident présent au déjeuner pour calculer les textures.</p>
-            )}
-            {!isLoadingResidents && presentForLunchCount > 0 && ALL_PREPARATION_TYPES.every(pt => globalTextureCountsForLunch[pt] === 0) && (
-                 <p className="text-muted-foreground font-body text-center py-4">Les résidents présents n'ont pas de texture spécifiée ou sont tous en "Normal" sans autre texture requise.</p>
             )}
           </CardContent>
         </Card>
@@ -472,5 +498,7 @@ export default function DashboardPage() {
     </AppLayout>
   );
 }
+
+    
 
     
