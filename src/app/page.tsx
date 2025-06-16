@@ -138,6 +138,14 @@ export default function DashboardPage() {
     return todaysMeals.length > 0 ? todaysMeals : initialMockMealsTodayForDashboard;
   }, [importedWeeklyPlan]);
   
+  const isDisplayingImportedMenuForToday = useMemo(() => {
+    if (!importedWeeklyPlan) return false;
+    const todayPlan = importedWeeklyPlan.find(dayPlan => isToday(parseISO(dayPlan.date)));
+    if (!todayPlan) return false;
+    const lunch = todayPlan.meals.lunch;
+    return !!(lunch.starter || lunch.main || lunch.dessert);
+  }, [importedWeeklyPlan]);
+
   const presentResidentAttendances = useMemo(() => {
     return dailyAttendanceRecords.filter(a => 
       a.mealType === 'lunch' && 
@@ -438,7 +446,11 @@ export default function DashboardPage() {
             </div>
             <CardDescription className="font-body mt-2">
               {importedFileName ? (
-                <>Planning hebdomadaire chargé depuis : <strong>{importedFileName}</strong>. Les repas du jour sont affichés ci-dessous. <Button variant="link" size="sm" className="p-0 h-auto text-xs" onClick={clearImportedPlan}>Effacer le planning importé</Button></>
+                isDisplayingImportedMenuForToday ? (
+                  <>Planning hebdomadaire chargé depuis : <strong>{importedFileName}</strong>. Les repas du jour (ci-dessous) proviennent de ce planning. <Button variant="link" size="sm" className="p-0 h-auto text-xs" onClick={clearImportedPlan}>Effacer le planning importé</Button></>
+                ) : (
+                  <>Planning hebdomadaire chargé depuis : <strong>{importedFileName}</strong>, mais aucun menu n'est défini pour aujourd'hui ou le menu du jour est vide. Affichage du menu par défaut ci-dessous. <Button variant="link" size="sm" className="p-0 h-auto text-xs" onClick={clearImportedPlan}>Effacer le planning importé</Button></>
+                )
               ) : (
                 <>Affichage du menu par défaut pour aujourd'hui. Importez un planning Excel pour la semaine.</>
               )}
@@ -599,5 +611,3 @@ export default function DashboardPage() {
     </AppLayout>
   );
 }
-
-    
