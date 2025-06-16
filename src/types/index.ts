@@ -14,7 +14,7 @@ export interface Resident {
   contraindications: string[];
   textures: string[];
   diets: string[];
-  createdAt?: any; 
+  createdAt?: any; // Champ pour le timestamp Firestore, utile pour le tri ou l'affichage de l'ordre d'ajout
 }
 
 export interface Meal {
@@ -135,17 +135,17 @@ export interface MealReservationFormData {
   comments?: string;
 }
 
-// // Pour la suggestion de menu par IA -- Removed
+// // Pour la suggestion de menu par IA -- Removed in previous step
 // export interface MenuSuggestionInput {
-//   dietaryNeeds: string; // e.g., "Végétarien, sans gluten"
+//   dietaryNeeds: string; 
 //   mealType: 'starter' | 'main' | 'dessert';
-//   preferences?: string; // e.g., "aime les plats épicés, n'aime pas les champignons"
+//   preferences?: string; 
 // }
 
 // export interface MenuSuggestionOutput {
 //   suggestedDishName: string;
 //   description: string;
-//   reasoning?: string; // Why this dish fits the criteria
+//   reasoning?: string;
 // }
 
 // Pour le contexte d'authentification
@@ -154,4 +154,9 @@ export interface AuthContextType {
   login: (pin: string) => Promise<boolean>;
   logout: () => void;
   isLoading: boolean;
+}
+
+// Placeholder pour la page ai-menu-suggestion
+export default function AiMenuSuggestionPagePlaceholder() {
+  return null;
 }
