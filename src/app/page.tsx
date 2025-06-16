@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import type { Notification, Resident, AttendanceRecord, Meal, WeeklyDayPlan, PlannedMealItem, MealType } from '@/types';
-import { AlertTriangle, CheckCircle2, Info, Users, UtensilsCrossed, BellRing, ClipboardCheck, Upload, Plus, Minus, Building, CheckSquare, XSquare, MinusSquare, HelpCircle, UserX, Loader2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Info, Users, UtensilsCrossed, BellRing, ClipboardCheck, Upload, Building, CheckSquare, XSquare, MinusSquare, HelpCircle, UserX, Loader2, ServerCrash } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { Input } from '@/components/ui/input';
@@ -22,9 +22,7 @@ export const todayISO = new Date().toISOString().split('T')[0];
 const LOCAL_STORAGE_ATTENDANCE_KEY_PREFIX = 'simulatedDailyAttendance_';
 
 // Fallback mock attendance if localStorage is empty.
-// These IDs should ideally be IDs of some of your actual residents from Firestore for meaningful fallback.
 export const mockAttendanceFallback: AttendanceRecord[] = [
-  // Replace 'residentId1_from_firestore', etc. with actual resident IDs if you want specific fallbacks
   { id: 'att_fb_1_lunch', residentId: 'residentId1_from_firestore', date: todayISO, mealType: 'lunch', status: 'present', mealLocation: 'dining_hall' },
   { id: 'att_fb_2_lunch', residentId: 'residentId2_from_firestore', date: todayISO, mealType: 'lunch', status: 'present', mealLocation: 'room' },
   { id: 'att_fb_3_lunch', residentId: 'residentId3_from_firestore', date: todayISO, mealType: 'lunch', status: 'absent', notes: 'Rendez-vous coiffeur', mealLocation: 'not_applicable' },
@@ -50,8 +48,8 @@ type PreparationType = 'Normal' | 'Mixé morceaux' | 'Mixé lisse' | 'Haché fin
 const ALL_PREPARATION_TYPES: PreparationType[] = ['Normal', 'Mixé morceaux', 'Mixé lisse', 'Haché fin', 'Haché gros'];
 
 
-const getPreparationTypeForResident = (resident: Resident): PreparationType => {
-  if (!resident.textures || resident.textures.length === 0) return 'Normal';
+const getPreparationTypeForResident = (resident?: Resident): PreparationType => {
+  if (!resident || !resident.textures || resident.textures.length === 0) return 'Normal';
   const lowerTextures = resident.textures.map(t => t.toLowerCase());
   if (lowerTextures.some(t => t.includes('mixé lisse'))) return 'Mixé lisse';
   if (lowerTextures.some(t => t.includes('mixé morceaux'))) return 'Mixé morceaux';
@@ -74,7 +72,6 @@ const plannedItemToMeal = (item: PlannedMealItem, idSuffix: string): Meal => ({
 export default function DashboardPage() {
   const [allResidents, setAllResidents] = useState<Resident[]>([]);
   const [isLoadingResidents, setIsLoadingResidents] = useState(true);
-  const [mealPreparationStatus, setMealPreparationStatus] = useState<Record<string, { target: number; current: number }>>({});
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   
@@ -106,21 +103,31 @@ export default function DashboardPage() {
       if (storedAttendance) {
         setDailyAttendanceRecords(JSON.parse(storedAttendance) as AttendanceRecord[]);
       } else {
-        setDailyAttendanceRecords(mockAttendanceFallback); // Fallback if nothing in localStorage
+        setDailyAttendanceRecords(mockAttendanceFallback); 
       }
     } catch (e) {
       console.error("Error reading daily attendance from localStorage for dashboard", e);
-      setDailyAttendanceRecords(mockAttendanceFallback); // Fallback on error
+      setDailyAttendanceRecords(mockAttendanceFallback); 
     }
 
     setIsLoadingResidents(true);
     const unsubscribe = onResidentsUpdate((updatedResidents) => {
       setAllResidents(updatedResidents);
       setIsLoadingResidents(false);
+    }, (error) => {
+        console.error("Failed to subscribe to residents update:", error);
+        toast({
+            title: "Erreur de connexion Firestore",
+            description: "Impossible de charger les données des résidents. Vérifiez la configuration Firebase et les règles de sécurité.",
+            variant: "destructive",
+            duration: 10000,
+        });
+        setAllResidents([]); // Utiliser un tableau vide en cas d'erreur majeure
+        setIsLoadingResidents(false);
     });
     return () => unsubscribe();
 
-  }, [currentAttendanceKey]); 
+  }, [currentAttendanceKey, toast]); 
 
   const activeResidents = useMemo(() => allResidents.filter(r => r.isActive), [allResidents]);
 
@@ -154,25 +161,6 @@ export default function DashboardPage() {
       activeResidents.some(ar => ar.id === a.residentId) 
     );
   }, [activeResidents, dailyAttendanceRecords]);
-
-  const residentsByUnit = useMemo(() => {
-    return activeResidents.reduce((acc, resident) => {
-      const unit = resident.unit || 'Non spécifiée';
-      if (!acc[unit]) acc[unit] = [];
-      acc[unit].push(resident);
-      return acc;
-    }, {} as Record<string, Resident[]>);
-  }, [activeResidents]);
-  
-  const presentResidentsByUnit = useMemo(() => {
-    const units: Record<string, Resident[]> = {};
-    for (const unitName in residentsByUnit) {
-        units[unitName] = residentsByUnit[unitName].filter(resident => 
-            presentResidentAttendances.some(att => att.residentId === resident.id)
-        );
-    }
-    return units;
-  }, [residentsByUnit, presentResidentAttendances]);
 
   const totalActiveResidentsCount = activeResidents.length;
   const presentForLunchCount = presentResidentAttendances.length;
@@ -233,101 +221,24 @@ export default function DashboardPage() {
     return attendanceRecord?.notes || '-';
   };
 
-
-  const categorizedMealsForDashboard: Record<string, Meal[]> = useMemo(() =>
-    mealsToDisplayForDashboard.reduce((acc, meal) => {
-      const category = meal.category;
-      if (!acc[category]) acc[category] = [];
-      acc[category].push(meal);
-      return acc;
-    }, {} as Record<string, Meal[]>),
-  [mealsToDisplayForDashboard]);
-
-  const categoryOrder: Meal['category'][] = ['starter', 'main', 'dessert', 'snack', 'drink'];
-  const categoryLabels: Record<Meal['category'], string> = {
-    starter: 'Entrées',
-    main: 'Plats Principaux',
-    dessert: 'Desserts',
-    snack: 'Collations',
-    drink: 'Boissons',
-  };
-
-  const mealPreparationDetailsByUnit = useMemo(() => {
-    const detailsByUnit: Record<string, Record<string, Record<PreparationType, number>>> = {};
-
-    Object.keys(presentResidentsByUnit).forEach(unitName => {
-      detailsByUnit[unitName] = {};
-      const residentsInUnit = presentResidentsByUnit[unitName];
-
-      mealsToDisplayForDashboard.forEach(meal => {
-        if (!detailsByUnit[unitName][meal.id]) {
-            detailsByUnit[unitName][meal.id] = {} as Record<PreparationType, number>;
-            ALL_PREPARATION_TYPES.forEach(pt => detailsByUnit[unitName][meal.id][pt] = 0);
+  const globalTextureCountsForLunch = useMemo(() => {
+    const counts: Record<PreparationType, number> = {
+      'Normal': 0,
+      'Mixé morceaux': 0,
+      'Mixé lisse': 0,
+      'Haché fin': 0,
+      'Haché gros': 0,
+    };
+    presentResidentAttendances.forEach(att => {
+        const resident = activeResidents.find(r => r.id === att.residentId);
+        if (resident) {
+            const prepType = getPreparationTypeForResident(resident);
+            counts[prepType]++;
         }
-        
-        residentsInUnit.forEach(resident => {
-          if (meal.allergenTags?.some(allergen => resident.allergies.includes(allergen))) {
-            return;
-          }
-          if (meal.category === 'main') { 
-            const isResidentVegetarian = resident.diets.includes('Végétarien');
-            const isMealVegetarian = meal.dietTags?.includes('Végétarien');
-            if (isResidentVegetarian && !isMealVegetarian) {
-                const vegAlternativeExists = mealsToDisplayForDashboard.some(m => m.category === 'main' && m.dietTags?.includes('Végétarien'));
-                if (vegAlternativeExists) return; 
-            }
-            if (resident.diets.includes('Sans sel') && !meal.dietTags?.includes('Sans sel')) {
-                 return;
-            }
-          }
-          
-          const prepType = getPreparationTypeForResident(resident);
-          detailsByUnit[unitName][meal.id][prepType]++;
-        });
-      });
     });
-    return detailsByUnit;
-  }, [presentResidentsByUnit, mealsToDisplayForDashboard]);
+    return counts;
+  }, [presentResidentAttendances, activeResidents]);
 
-  useEffect(() => {
-    setMealPreparationStatus(prevStatus => {
-      const newStatusMap: Record<string, { target: number; current: number }> = {};
-      Object.keys(mealPreparationDetailsByUnit).forEach(unitName => {
-        Object.keys(mealPreparationDetailsByUnit[unitName]).forEach(mealId => {
-          const mealDetails = mealPreparationDetailsByUnit[unitName][mealId];
-          if (mealDetails) {
-            (Object.keys(mealDetails) as PreparationType[]).forEach(prepType => {
-              const target = mealDetails[prepType];
-              if (target > 0) {
-                const key = `unit-${unitName}-meal-${mealId}-prep-${prepType}`;
-                const existing = prevStatus[key];
-                newStatusMap[key] = {
-                  target: target,
-                  current: (existing && existing.target === target) ? existing.current : target,
-                };
-              }
-            });
-          }
-        });
-      });
-      return newStatusMap;
-    });
-  }, [mealPreparationDetailsByUnit]);
-
-  const handleQuantityChange = (mealPrepKey: string, delta: number) => {
-    setMealPreparationStatus(prev => {
-      const currentEntry = prev[mealPrepKey];
-      if (!currentEntry) return prev;
-      const newCurrent = Math.max(0, currentEntry.current + delta);
-      return {
-        ...prev,
-        [mealPrepKey]: {
-          ...currentEntry,
-          current: newCurrent,
-        },
-      };
-    });
-  };
 
   const onFileUpload = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -382,7 +293,6 @@ export default function DashboardPage() {
     );
   }
 
-
   return (
     <AppLayout>
       <div className="space-y-6">
@@ -434,7 +344,7 @@ export default function DashboardPage() {
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div className="flex items-center gap-2">
                     <ClipboardCheck className="h-6 w-6 text-primary" />
-                    <CardTitle className="font-headline">Préparation Repas par Unité (Déjeuner)</CardTitle>
+                    <CardTitle className="font-headline">Total Textures à Préparer (Déjeuner)</CardTitle>
                 </div>
                 <form onSubmit={onFileUpload} className="flex items-center gap-2">
                     <Input
@@ -445,108 +355,49 @@ export default function DashboardPage() {
                 </form>
             </div>
              <CardDescription className="font-body mt-2">
-              {importedFileName ? (
-                isDisplayingImportedMenuForToday ? (
-                  <>Planning hebdomadaire chargé depuis : <strong>{importedFileName}</strong>. Les repas du déjeuner (ci-dessous) proviennent de ce planning. <Button variant="link" size="sm" className="p-0 h-auto text-xs" onClick={clearImportedPlan}>Effacer le planning importé</Button></>
+                Ce récapitulatif des textures est basé sur les résidents marqués comme présents pour le déjeuner.
+                {importedFileName ? (
+                    isDisplayingImportedMenuForToday ? (
+                    <> Le menu du déjeuner provient du fichier importé : <strong>{importedFileName}</strong>.</>
+                    ) : (
+                    (() => {
+                        if (!importedWeeklyPlan) { 
+                        return <> Aucun planning Excel n'est actuellement chargé pour la semaine. Affichage basé sur le menu par défaut pour le déjeuner.</>;
+                        }
+                        const todayPlan = importedWeeklyPlan.find(dayPlan => isToday(parseISO(dayPlan.date)));
+                        if (todayPlan) { 
+                            return <> Planning <strong>{importedFileName}</strong> chargé, mais il ne contient pas de plats spécifiés pour le déjeuner d'aujourd'hui (vérifiez 'TypeRepas' et 'RolePlat' dans l'Excel). Affichage basé sur le menu par défaut.</>;
+                        } else { 
+                            return <> Planning <strong>{importedFileName}</strong> chargé, mais aucun menu n'y est défini pour la date d'aujourd'hui. Affichage basé sur le menu par défaut.</>;
+                        }
+                    })()
+                    )
                 ) : (
-                  (() => {
-                    if (!importedWeeklyPlan) { 
-                       return <>Affichage du menu par défaut pour le déjeuner aujourd'hui. Importez un planning Excel pour la semaine.</>;
-                    }
-                    const todayPlan = importedWeeklyPlan.find(dayPlan => isToday(parseISO(dayPlan.date)));
-                    if (todayPlan) { 
-                        return <>Planning hebdomadaire chargé depuis : <strong>{importedFileName}</strong>. Un menu est défini pour aujourd'hui, mais il ne contient pas de plats pour le déjeuner ou les plats de déjeuner ne sont pas correctement spécifiés (vérifiez 'TypeRepas' et 'RolePlat' dans l'Excel). Affichage du menu par défaut pour le déjeuner. <Button variant="link" size="sm" className="p-0 h-auto text-xs" onClick={clearImportedPlan}>Effacer le planning importé</Button></>;
-                    } else { 
-                        return <>Planning hebdomadaire chargé depuis : <strong>{importedFileName}</strong>, mais aucun menu n'est défini pour aujourd'hui dans ce planning. Affichage du menu par défaut pour le déjeuner. <Button variant="link" size="sm" className="p-0 h-auto text-xs" onClick={clearImportedPlan}>Effacer le planning importé</Button></>;
-                    }
-                  })()
-                )
-              ) : (
-                <>Affichage du menu par défaut pour le déjeuner aujourd'hui. Importez un planning Excel pour la semaine.</>
-              )}
+                    <> Aucun planning Excel n'a été importé. Affichage basé sur le menu par défaut pour le déjeuner.</>
+                )}
+                {importedFileName && <Button variant="link" size="sm" className="p-0 h-auto text-xs ml-1" onClick={clearImportedPlan}>Effacer le planning importé</Button>}
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-6">
-            {isLoadingResidents && <div className="flex justify-center items-center py-10"><Loader2 className="h-8 w-8 animate-spin text-primary" /><p className="ml-2 font-body text-muted-foreground">Chargement des données de préparation...</p></div>}
-            {!isLoadingResidents && Object.keys(presentResidentsByUnit).sort().map(unitName => {
-              const unitMealDetails = mealPreparationDetailsByUnit[unitName];
-              if (!unitMealDetails || presentResidentsByUnit[unitName].length === 0) return null;
-
-              return (
-                <div key={unitName} className="border p-4 rounded-lg shadow-sm bg-card">
-                  <h2 className="text-xl font-headline text-primary mb-3 flex items-center gap-2">
-                    <Building className="h-5 w-5" />
-                    {unitName} 
-                    <span className="text-sm font-body text-muted-foreground">({presentResidentsByUnit[unitName].length} résidents présents au déjeuner)</span>
-                  </h2>
-                  {categoryOrder.map(category => {
-                    const mealsInCategory = categorizedMealsForDashboard[category];
-                    if (!mealsInCategory || mealsInCategory.length === 0) return null;
-
-                    const categoryHasContentForUnit = mealsInCategory.some(meal => 
-                        unitMealDetails[meal.id] && Object.values(unitMealDetails[meal.id]).some(count => count > 0)
-                    );
-                    if (!categoryHasContentForUnit && mealsToDisplayForDashboard.length > 0) return null;
-
+          <CardContent className="space-y-3">
+            {isLoadingResidents ? (
+                <div className="flex justify-center items-center py-10"><Loader2 className="h-8 w-8 animate-spin text-primary" /><p className="ml-2 font-body text-muted-foreground">Chargement des données de préparation...</p></div>
+            ) : presentForLunchCount > 0 ? (
+                ALL_PREPARATION_TYPES.map(prepType => {
+                    const count = globalTextureCountsForLunch[prepType];
+                    if (count === 0 && prepType !== 'Normal') return null; // Ne pas afficher si 0, sauf pour "Normal" s'il est le seul
                     return (
-                      <div key={`${unitName}-${category}`} className="mb-4 last:mb-0">
-                        <h3 className="text-md font-semibold font-body text-foreground mb-2 border-b pb-1">{categoryLabels[category]}</h3>
-                        <div className="space-y-3">
-                          {mealsInCategory.map(meal => {
-                            const preparations = unitMealDetails[meal.id];
-                            if (!preparations) return null;
-
-                            const hasPreparationsForThisMealInUnit = Object.values(preparations).some(count => count > 0);
-                            if (!hasPreparationsForThisMealInUnit) return null;
-                            
-                            return (
-                              <div key={`${unitName}-${meal.id}`} className="p-2.5 rounded-md border bg-background hover:bg-muted/30 transition-colors">
-                                <p className="font-semibold font-body text-base mb-1.5">{meal.name}</p>
-                                {meal.description && <p className="text-xs text-muted-foreground mb-1.5">{meal.description}</p>}
-                                <div className="space-y-1.5 pl-1">
-                                  {(Object.keys(preparations) as PreparationType[]).map(prepType => {
-                                    const targetCount = preparations[prepType];
-                                    if (targetCount === 0) return null;
-                                    
-                                    const mealPrepKey = `unit-${unitName}-meal-${meal.id}-prep-${prepType}`;
-                                    const currentQuantity = mealPreparationStatus[mealPrepKey]?.current ?? targetCount;
-                                    
-                                    return (
-                                      <div key={mealPrepKey} className="flex items-center justify-between py-0.5">
-                                        <p className="font-body text-sm">
-                                          {prepType}: <span className="text-xs text-muted-foreground">(Prévu: {targetCount})</span>
-                                        </p>
-                                        <div className="flex items-center gap-1">
-                                          <Button variant="outline" size="icon" className="h-6 w-6" onClick={() => handleQuantityChange(mealPrepKey, -1)} disabled={currentQuantity === 0} aria-label={`Diminuer ${meal.name} ${prepType} pour ${unitName}`}>
-                                            <Minus className="h-3.5 w-3.5" />
-                                          </Button>
-                                          <span className="font-body font-semibold text-center w-8 text-sm tabular-nums">
-                                            {currentQuantity}
-                                          </span>
-                                          <Button variant="outline" size="icon" className="h-6 w-6" onClick={() => handleQuantityChange(mealPrepKey, 1)} aria-label={`Augmenter ${meal.name} ${prepType} pour ${unitName}`}>
-                                            <Plus className="h-3.5 w-3.5" />
-                                          </Button>
-                                        </div>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            );
-                          })}
+                        <div key={prepType} className="flex items-center justify-between p-3 rounded-md border bg-background hover:bg-muted/30 transition-colors">
+                            <p className="font-body text-md font-medium">{prepType}</p>
+                            <Badge variant={count > 0 ? "default" : "outline"} className="text-md px-3 py-1">{count}</Badge>
                         </div>
-                      </div>
                     );
-                  })}
-                </div>
-              );
-            })}
-            {!isLoadingResidents && mealsToDisplayForDashboard.length === 0 && (
-                <p className="text-muted-foreground font-body text-center py-4">Aucun menu à afficher pour aujourd'hui. Importez un planning Excel.</p>
+                })
+            ) : (
+                 <p className="text-muted-foreground font-body text-center py-4">Aucun résident présent au déjeuner pour calculer les textures.</p>
             )}
-            {!isLoadingResidents && (mealsToDisplayForDashboard.length > 0 && !initialMockMealsTodayForDashboard.includes(mealsToDisplayForDashboard[0]) && Object.keys(presentResidentsByUnit).every(unit => presentResidentsByUnit[unit].length === 0 || !categoryOrder.some(category => categorizedMealsForDashboard[category]?.some(meal => mealPreparationDetailsByUnit[unit]?.[meal.id] && Object.values(mealPreparationDetailsByUnit[unit][meal.id]).some(count => count > 0))))) && (
-                 <p className="text-muted-foreground font-body text-center py-4">Menu du jour chargé, mais aucun résident présent au déjeuner ou plat applicable pour les unités (vérifiez présences, allergies, régimes, textures).</p>
-             )}
+            {!isLoadingResidents && presentForLunchCount > 0 && ALL_PREPARATION_TYPES.every(pt => globalTextureCountsForLunch[pt] === 0) && (
+                 <p className="text-muted-foreground font-body text-center py-4">Les résidents présents n'ont pas de texture spécifiée ou sont tous en "Normal" sans autre texture requise.</p>
+            )}
           </CardContent>
         </Card>
 
@@ -621,3 +472,5 @@ export default function DashboardPage() {
     </AppLayout>
   );
 }
+
+    
