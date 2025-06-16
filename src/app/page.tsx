@@ -7,28 +7,20 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import type { Notification, Resident, AttendanceRecord, Meal, WeeklyDayPlan, PlannedMealItem, MealType as AppMealType } from '@/types'; // Renamed MealType to AppMealType to avoid conflict
-import { AlertTriangle, CheckCircle2, Info, Users, UtensilsCrossed, BellRing, ClipboardCheck, Upload, Plus, Minus, Building, CheckSquare, XSquare, MinusSquare, HelpCircle, UserX } from 'lucide-react';
+import type { Notification, Resident, AttendanceRecord, Meal, WeeklyDayPlan, PlannedMealItem } from '@/types';
+import { AlertTriangle, CheckCircle2, Info, Users, UtensilsCrossed, BellRing, ClipboardCheck, Upload, Plus, Minus, Building, CheckSquare, XSquare, MinusSquare, HelpCircle, UserX, Loader2 } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { Input } from '@/components/ui/input';
 import { useToast } from "@/hooks/use-toast";
 import { handleMenuUpload } from './actions';
 import { format, parseISO, isToday } from 'date-fns';
+import { onResidentsUpdate } from '@/lib/firebase/firestoreClientService'; // Import Firestore listener
 
 
-const todayISO = new Date().toISOString().split('T')[0]; 
+export const todayISO = new Date().toISOString().split('T')[0]; 
 
-const mockResidents: Resident[] = [
-  { id: '1', firstName: 'Jean', lastName: 'Dupont', roomNumber: '101A', allergies: ['Arachides'], medicalSpecificities: 'Diabète type 2', isActive: true, avatarUrl: 'https://placehold.co/40x40.png', unit: 'Unité A', contraindications: ['Pamplemousse'], textures: ['Normal'], diets: ['Sans sel', 'Diabétique'] },
-  { id: '2', firstName: 'Marie', lastName: 'Curie', roomNumber: '102B', allergies: [], medicalSpecificities: 'Hypertension', isActive: true, avatarUrl: 'https://placehold.co/40x40.png', unit: 'Unité A', contraindications: [], textures: ['Mixé lisse'], diets: ['Végétarien', 'Hyperprotéiné'] },
-  { id: '3', firstName: 'Pierre', lastName: 'Gagnon', roomNumber: '103C', allergies: ['Gluten'], medicalSpecificities: '', isActive: true, avatarUrl: 'https://placehold.co/40x40.png', unit: 'Unité B', contraindications: [], textures: ['Haché fin'], diets: ['Sans porc'] },
-  { id: '4', firstName: 'Lucie', lastName: 'Tremblay', roomNumber: '201A', allergies: [], medicalSpecificities: '', isActive: true, avatarUrl: 'https://placehold.co/40x40.png', unit: 'Unité A', contraindications: [], textures: ['Normal'], diets: [] },
-  { id: '5', firstName: 'Ahmed', lastName: 'Benali', roomNumber: '202B', allergies: [], medicalSpecificities: 'Difficultés de déglutition', isActive: true, avatarUrl: 'https://placehold.co/40x40.png', unit: 'Unité B', contraindications: [], textures: ['Mixé morceaux'], diets: ['Sans porc'] },
-  { id: '6', firstName: 'Sophie', lastName: 'Petit', roomNumber: '203C', allergies: [], medicalSpecificities: '', isActive: true, avatarUrl: 'https://placehold.co/40x40.png', unit: 'Unité B', contraindications: ['Soja'], textures: ['Normal'], diets: ['Diabétique'] },
-  { id: '7', firstName: 'Paul', lastName: 'Marchand', roomNumber: '301A', allergies: [], medicalSpecificities: '', isActive: false, avatarUrl: 'https://placehold.co/40x40.png', unit: 'Unité A', contraindications: [], textures: ['Normal'], diets: [] },
-];
-
+// mockAttendance reste pour simuler les événements de présence du jour
 export const mockAttendance: AttendanceRecord[] = [
   { id: 'att1', residentId: '1', date: todayISO, mealType: 'lunch', status: 'present', mealLocation: 'dining_hall' },
   { id: 'att2', residentId: '2', date: todayISO, mealType: 'lunch', status: 'present', mealLocation: 'room' },
@@ -36,10 +28,11 @@ export const mockAttendance: AttendanceRecord[] = [
   { id: 'att4', residentId: '4', date: todayISO, mealType: 'lunch', status: 'present', mealLocation: 'dining_hall' },
   { id: 'att5', residentId: '5', date: todayISO, mealType: 'lunch', status: 'present', mealLocation: 'room' },
   { id: 'att6', residentId: '6', date: todayISO, mealType: 'lunch', status: 'absent', notes: 'Rendez-vous coiffeur', mealLocation: 'not_applicable' },
-  // No attendance for resident 7 as they are inactive
+  // Note: Les IDs ici (1, 2, 3...) devront correspondre aux IDs des résidents DANS FIRESTORE pour que le matching fonctionne.
+  // Si vos résidents Firestore ont des IDs auto-générés (ex: "xyz123"), mettez à jour ces IDs dans mockAttendance.
 ];
 
-// This will be our fallback if no weekly plan is loaded or today's meals aren't in the plan
+
 const initialMockMealsTodayForDashboard: Meal[] = [
   { id: 'fallback-s1', name: 'Velouté de Carottes (Défaut)', category: 'starter', dietTags: ['Végétarien', 'Sans Sel'], allergenTags: [], description: "Un velouté doux et parfumé." },
   { id: 'fallback-m1', name: 'Boeuf Bourguignon (Défaut)', category: 'main', dietTags: [], allergenTags: [], description: "Un classique mijoté lentement." },
@@ -70,7 +63,6 @@ const getPreparationTypeForResident = (resident: Resident): PreparationType => {
   return 'Normal';
 };
 
-// Helper to convert PlannedMealItem to Meal (for dashboard display)
 const plannedItemToMeal = (item: PlannedMealItem, idSuffix: string): Meal => ({
   id: `planned-${item.name.replace(/\s+/g, '-').toLowerCase()}-${idSuffix}`,
   name: item.name,
@@ -82,6 +74,8 @@ const plannedItemToMeal = (item: PlannedMealItem, idSuffix: string): Meal => ({
 
 
 export default function DashboardPage() {
+  const [allResidents, setAllResidents] = useState<Resident[]>([]);
+  const [isLoadingResidents, setIsLoadingResidents] = useState(true);
   const [mealPreparationStatus, setMealPreparationStatus] = useState<Record<string, { target: number; current: number }>>({});
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -105,7 +99,18 @@ export default function DashboardPage() {
         localStorage.removeItem('currentWeeklyPlanFileName');
       }
     }
+
+    // Fetch residents from Firestore
+    setIsLoadingResidents(true);
+    const unsubscribe = onResidentsUpdate((updatedResidents) => {
+      setAllResidents(updatedResidents);
+      setIsLoadingResidents(false);
+    });
+    return () => unsubscribe(); // Cleanup subscription on unmount
+
   }, []);
+
+  const activeResidents = useMemo(() => allResidents.filter(r => r.isActive), [allResidents]);
 
   const mealsToDisplayForDashboard = useMemo(() => {
     if (!importedWeeklyPlan) return initialMockMealsTodayForDashboard;
@@ -120,15 +125,13 @@ export default function DashboardPage() {
     
     return todaysMeals.length > 0 ? todaysMeals : initialMockMealsTodayForDashboard;
   }, [importedWeeklyPlan]);
-
-  const activeResidents = useMemo(() => mockResidents.filter(r => r.isActive), []);
   
   const presentResidentAttendances = useMemo(() => {
     return mockAttendance.filter(a => 
       a.mealType === 'lunch' && 
       a.status === 'present' && 
       a.date === todayISO &&
-      activeResidents.some(ar => ar.id === a.residentId) // Ensure the resident is currently active
+      activeResidents.some(ar => ar.id === a.residentId) 
     );
   }, [activeResidents]);
 
@@ -182,17 +185,32 @@ export default function DashboardPage() {
     }
   };
   
-  const getAttendanceStatusBadge = (status: AttendanceRecord['status']) => {
-    switch (status) {
-      case 'present':
-        return <Badge variant="default" className="bg-green-100 text-green-700"><CheckSquare className="mr-1 h-4 w-4" />Présent(e)</Badge>;
-      case 'absent':
-        return <Badge variant="destructive" className="bg-red-100 text-red-700"><XSquare className="mr-1 h-4 w-4" />Absent(e)</Badge>;
-      case 'external':
-        return <Badge variant="secondary" className="bg-yellow-100 text-yellow-700"><MinusSquare className="mr-1 h-4 w-4" />Extérieur</Badge>;
-      default:
-        return <Badge variant="outline"><HelpCircle className="mr-1 h-4 w-4" />Non Renseigné</Badge>;
+  const getAttendanceStatusBadge = (residentId: string, isActive: boolean): React.ReactNode => {
+     if (!isActive) {
+      return <Badge variant="outline" className="bg-gray-100 text-gray-600"><UserX className="mr-1 h-4 w-4" />Inactif</Badge>;
     }
+    const attendanceRecord = mockAttendance.find(
+      (att) => att.residentId === residentId && att.date === todayISO && att.mealType === 'lunch'
+    );
+
+    if (attendanceRecord) {
+      switch (attendanceRecord.status) {
+        case 'present':
+          return <Badge variant="default" className="bg-green-100 text-green-700"><CheckSquare className="mr-1 h-4 w-4" />Présent(e)</Badge>;
+        case 'absent':
+          return <Badge variant="destructive" className="bg-red-100 text-red-700"><XSquare className="mr-1 h-4 w-4" />Absent(e)</Badge>;
+        case 'external':
+          return <Badge variant="secondary" className="bg-yellow-100 text-yellow-700"><MinusSquare className="mr-1 h-4 w-4" />Extérieur</Badge>;
+      }
+    }
+    return <Badge variant="outline"><HelpCircle className="mr-1 h-4 w-4" />Non Renseigné</Badge>;
+  };
+  
+  const getAttendanceNotes = (residentId: string): string => {
+    const attendanceRecord = mockAttendance.find(
+      (att) => att.residentId === residentId && att.date === todayISO && att.mealType === 'lunch'
+    );
+    return attendanceRecord?.notes || '-';
   };
 
 
@@ -333,6 +351,18 @@ export default function DashboardPage() {
   }
 
 
+  if (isLoadingResidents && !clientSideRendered) { // Show full page loader only on initial server render or if client hasn't hydrated
+    return (
+      <AppLayout>
+        <div className="flex h-[calc(100vh-var(--header-height)-2rem)] items-center justify-center">
+          <Loader2 className="h-12 w-12 animate-spin text-primary" />
+          <p className="ml-3 font-body text-lg text-muted-foreground">Chargement du tableau de bord...</p>
+        </div>
+      </AppLayout>
+    );
+  }
+
+
   return (
     <AppLayout>
       <div className="space-y-6">
@@ -345,9 +375,9 @@ export default function DashboardPage() {
               <Users className="h-5 w-5 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold font-body">{totalActiveResidentsCount}</div>
+              {isLoadingResidents ? <Loader2 className="h-6 w-6 animate-spin text-primary my-1" /> : <div className="text-2xl font-bold font-body">{totalActiveResidentsCount}</div>}
               <p className="text-xs text-muted-foreground font-body">
-                {presentForLunchCount} présents au déjeuner aujourd'hui
+                {isLoadingResidents ? "Chargement..." : `${presentForLunchCount} présents au déjeuner aujourd'hui`}
               </p>
             </CardContent>
           </Card>
@@ -358,9 +388,9 @@ export default function DashboardPage() {
               <UtensilsCrossed className="h-5 w-5 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold font-body">{presentForLunchCount}</div>
+            {isLoadingResidents ? <Loader2 className="h-6 w-6 animate-spin text-primary my-1" /> : <div className="text-2xl font-bold font-body">{presentForLunchCount}</div>}
               <p className="text-xs text-muted-foreground font-body">
-                Basé sur les résidents présents. {dietSpecificMeals['Sans sel']} sans sel, {dietSpecificMeals['Végétarien']} végé., {dietSpecificMeals['Mixé']} mixés, {dietSpecificMeals['Haché']} hachés.
+                {isLoadingResidents ? "Calcul en cours..." : `Basé sur les résidents présents. ${dietSpecificMeals['Sans sel']} sans sel, ${dietSpecificMeals['Végétarien']} végé., ${dietSpecificMeals['Mixé']} mixés, ${dietSpecificMeals['Haché']} hachés.`}
               </p>
             </CardContent>
           </Card>
@@ -403,7 +433,8 @@ export default function DashboardPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            {Object.keys(presentResidentsByUnit).sort().map(unitName => {
+            {isLoadingResidents && <div className="flex justify-center items-center py-10"><Loader2 className="h-8 w-8 animate-spin text-primary" /><p className="ml-2 font-body text-muted-foreground">Chargement des données de préparation...</p></div>}
+            {!isLoadingResidents && Object.keys(presentResidentsByUnit).sort().map(unitName => {
               const unitMealDetails = mealPreparationDetailsByUnit[unitName];
               if (!unitMealDetails || presentResidentsByUnit[unitName].length === 0) return null;
 
@@ -476,10 +507,10 @@ export default function DashboardPage() {
                 </div>
               );
             })}
-            {mealsToDisplayForDashboard.length === 0 && (
+            {!isLoadingResidents && mealsToDisplayForDashboard.length === 0 && (
                 <p className="text-muted-foreground font-body text-center py-4">Aucun menu à afficher pour aujourd'hui. Importez un planning Excel.</p>
             )}
-            {(mealsToDisplayForDashboard.length > 0 && !initialMockMealsTodayForDashboard.includes(mealsToDisplayForDashboard[0]) && Object.keys(presentResidentsByUnit).every(unit => presentResidentsByUnit[unit].length === 0 || !categoryOrder.some(category => categorizedMealsForDashboard[category]?.some(meal => mealPreparationDetailsByUnit[unit]?.[meal.id] && Object.values(mealPreparationDetailsByUnit[unit][meal.id]).some(count => count > 0))))) && (
+            {!isLoadingResidents && (mealsToDisplayForDashboard.length > 0 && !initialMockMealsTodayForDashboard.includes(mealsToDisplayForDashboard[0]) && Object.keys(presentResidentsByUnit).every(unit => presentResidentsByUnit[unit].length === 0 || !categoryOrder.some(category => categorizedMealsForDashboard[category]?.some(meal => mealPreparationDetailsByUnit[unit]?.[meal.id] && Object.values(mealPreparationDetailsByUnit[unit][meal.id]).some(count => count > 0))))) && (
                  <p className="text-muted-foreground font-body text-center py-4">Menu du jour chargé, mais aucun résident présent au déjeuner ou plat applicable pour les unités (vérifiez présences, allergies, régimes, textures).</p>
              )}
           </CardContent>
@@ -492,6 +523,11 @@ export default function DashboardPage() {
               <CardDescription className="font-body">Liste des résidents et leur statut pour le déjeuner du jour.</CardDescription>
             </CardHeader>
             <CardContent>
+            {isLoadingResidents ? (
+                <div className="flex justify-center items-center py-10"> <Loader2 className="h-6 w-6 animate-spin text-primary" /> <p className="ml-2 font-body text-muted-foreground">Chargement...</p></div>
+            ) : activeResidents.length === 0 ? (
+                <p className="text-muted-foreground font-body text-center py-4">Aucun résident actif trouvé.</p>
+            ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -502,24 +538,22 @@ export default function DashboardPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {mockAttendance.filter(att => att.mealType === 'lunch' && att.date === todayISO && activeResidents.some(r => r.id === att.residentId) ).slice(0,4).map(att => {
-                    const resident = activeResidents.find(r => r.id === att.residentId);
-                    return (
-                      <TableRow key={att.id} className="font-body">
+                  {activeResidents.slice(0,4).map(resident => (
+                      <TableRow key={resident.id} className="font-body">
                         <TableCell className="flex items-center gap-2">
                            <Image src={resident?.avatarUrl || "https://placehold.co/32x32.png"} alt={resident?.firstName || ""} width={24} height={24} className="rounded-full" data-ai-hint="person avatar" />
                           {resident ? `${resident.firstName} ${resident.lastName}` : 'N/A'}
                         </TableCell>
                         <TableCell>{resident?.unit || 'N/A'}</TableCell>
                         <TableCell>
-                          {getAttendanceStatusBadge(att.status)}
+                          {getAttendanceStatusBadge(resident.id, resident.isActive)}
                         </TableCell>
-                        <TableCell>{att.notes || '-'}</TableCell>
+                        <TableCell>{getAttendanceNotes(resident.id)}</TableCell>
                       </TableRow>
-                    );
-                  })}
+                    ))}
                 </TableBody>
               </Table>
+            )}
               <div className="mt-4">
                 <Link href="/attendance"><Button variant="outline" className="w-full font-body">Gérer les Présences</Button></Link>
               </div>
@@ -553,5 +587,3 @@ export default function DashboardPage() {
     </AppLayout>
   );
 }
-
-    
