@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import type { Notification, Resident, AttendanceRecord, Meal, WeeklyDayPlan, PlannedMealItem, MealType } from '@/types';
-import { AlertTriangle, CheckCircle2, Info, Users, UtensilsCrossed, BellRing, ClipboardCheck, Upload, Building, CheckSquare, XSquare, MinusSquare, HelpCircle, UserX, Loader2, ServerCrash } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Info, Users, UtensilsCrossed, BellRing, ClipboardCheck, Upload, Building, CheckSquare, XSquare, MinusSquare, HelpCircle, UserX, Loader2, ServerCrash, Clock } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { Input } from '@/components/ui/input';
@@ -20,28 +20,34 @@ import { onResidentsUpdate } from '@/lib/firebase/firestoreClientService';
 
 export const todayISO = new Date().toISOString().split('T')[0]; 
 const LOCAL_STORAGE_ATTENDANCE_KEY_PREFIX = 'simulatedDailyAttendance_';
-const SHARED_NOTIFICATIONS_KEY = 'sharedAppNotifications'; // Key for shared notifications
+const SHARED_NOTIFICATIONS_KEY = 'sharedAppNotifications'; 
 const LOCAL_STORAGE_WEEKLY_PLAN_FILE_NAME_KEY = 'currentWeeklyPlanFileName';
 
+const LUNCH_HOUR_THRESHOLD = 14; // Switch to dinner view at 2 PM
 
-// Fallback mock attendance if localStorage is empty.
 export const mockAttendanceFallback: AttendanceRecord[] = [
   { id: 'att_fb_1_lunch', residentId: 'residentId1_from_firestore', date: todayISO, mealType: 'lunch', status: 'present', mealLocation: 'dining_hall' },
   { id: 'att_fb_2_lunch', residentId: 'residentId2_from_firestore', date: todayISO, mealType: 'lunch', status: 'present', mealLocation: 'room' },
   { id: 'att_fb_3_lunch', residentId: 'residentId3_from_firestore', date: todayISO, mealType: 'lunch', status: 'absent', notes: 'Rendez-vous coiffeur', mealLocation: 'not_applicable' },
+  { id: 'att_fb_1_dinner', residentId: 'residentId1_from_firestore', date: todayISO, mealType: 'dinner', status: 'present', mealLocation: 'dining_hall' },
 ];
 
 
-const initialMockMealsTodayForDashboard: Meal[] = [
-  { id: 'fallback-s1', name: 'Velouté de Carottes (Défaut)', category: 'starter', dietTags: ['Végétarien', 'Sans Sel'], allergenTags: [], description: "Un velouté doux et parfumé." },
-  { id: 'fallback-m1', name: 'Boeuf Bourguignon (Défaut)', category: 'main', dietTags: [], allergenTags: [], description: "Un classique mijoté lentement." },
-  { id: 'fallback-d1', name: 'Crème Caramel (Défaut)', category: 'dessert', dietTags: [], allergenTags: ['Oeuf', 'Lactose'], description: "Dessert onctueux et gourmand." },
+const initialMockMealsTodayForLunchDashboard: Meal[] = [
+  { id: 'fallback-s1-lunch', name: 'Velouté de Carottes (Défaut Déj.)', category: 'starter', dietTags: ['Végétarien', 'Sans Sel'], allergenTags: [], description: "Un velouté doux et parfumé." },
+  { id: 'fallback-m1-lunch', name: 'Boeuf Bourguignon (Défaut Déj.)', category: 'main', dietTags: [], allergenTags: [], description: "Un classique mijoté lentement." },
+  { id: 'fallback-d1-lunch', name: 'Crème Caramel (Défaut Déj.)', category: 'dessert', dietTags: [], allergenTags: ['Oeuf', 'Lactose'], description: "Dessert onctueux et gourmand." },
+];
+
+const initialMockMealsTodayForDinnerDashboard: Meal[] = [
+  { id: 'fallback-s1-dinner', name: 'Soupe de Légumes (Défaut Dîn.)', category: 'starter', dietTags: ['Végétarien'], allergenTags: [], description: "Une soupe réconfortante." },
+  { id: 'fallback-m1-dinner', name: 'Poisson en Papillote (Défaut Dîn.)', category: 'main', dietTags: ['Pauvre en graisse'], allergenTags: [], description: "Léger et savoureux." },
+  { id: 'fallback-d1-dinner', name: 'Salade de Fruits (Défaut Dîn.)', category: 'dessert', dietTags: [], allergenTags: [], description: "Fraîche et de saison." },
 ];
 
 
 const mockDateReference = new Date('2024-07-15T10:00:00.000Z');
 
-// Mock notifications for initial display if localStorage is empty
 const initialMockNotificationsForDashboard: Notification[] = [
   { id: 'dash-mock-1', timestamp: new Date(mockDateReference.getTime() - 3600000).toISOString(), type: 'absence', title: 'Absence Imprévue (Exemple)', message: 'Sophie Petit ne prendra pas son repas ce midi (Coiffeur).', isRead: false, relatedResidentId: '6' },
   { id: 'dash-mock-2', timestamp: new Date(mockDateReference.getTime() - 7200000).toISOString(), type: 'info', title: 'Menu Spécial Anniversaire (Exemple)', message: 'Le dessert "Crème Caramel" est pour l\'anniversaire de Jean Dupont.', isRead: true },
@@ -63,8 +69,8 @@ const getPreparationTypeForResident = (resident?: Resident): PreparationType => 
   return 'Normal';
 };
 
-const plannedItemToMeal = (item: PlannedMealItem, idSuffix: string): Meal => ({
-  id: `planned-${item.name.replace(/\s+/g, '-').toLowerCase()}-${idSuffix}`,
+const plannedItemToMeal = (item: PlannedMealItem, mealType: MealType): Meal => ({
+  id: `planned-${item.name.replace(/\s+/g, '-').toLowerCase()}-${mealType}-${item.category}`,
   name: item.name,
   category: item.category,
   dietTags: item.dietTags || [],
@@ -84,6 +90,22 @@ export default function DashboardPage() {
   const [clientSideRendered, setClientSideRendered] = useState(false);
   const [dailyAttendanceRecords, setDailyAttendanceRecords] = useState<AttendanceRecord[]>([]);
   const [dashboardNotifications, setDashboardNotifications] = useState<Notification[]>(initialMockNotificationsForDashboard);
+  const [currentMealFocus, setCurrentMealFocus] = useState<MealType>('lunch');
+  const [currentTime, setCurrentTime] = useState<string | null>(null);
+
+
+  useEffect(() => {
+    const updateCurrentTimeAndFocus = () => {
+        const now = new Date();
+        setCurrentTime(now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit'}));
+        const currentHour = now.getHours();
+        setCurrentMealFocus(currentHour < LUNCH_HOUR_THRESHOLD ? 'lunch' : 'dinner');
+    };
+    updateCurrentTimeAndFocus(); // Initial call
+    const timerId = setInterval(updateCurrentTimeAndFocus, 60000); // Update every minute
+
+    return () => clearInterval(timerId);
+  }, []);
 
 
   const currentAttendanceKey = `${LOCAL_STORAGE_ATTENDANCE_KEY_PREFIX}${todayISO}`;
@@ -155,42 +177,44 @@ export default function DashboardPage() {
 
   const activeResidents = useMemo(() => allResidents.filter(r => r.isActive), [allResidents]);
 
-  const mealsToDisplayForDashboard = useMemo(() => {
-    if (!importedWeeklyPlan) return initialMockMealsTodayForDashboard;
-    const todayPlan = importedWeeklyPlan.find(dayPlan => isToday(parseISO(dayPlan.date)));
-    if (!todayPlan) return initialMockMealsTodayForDashboard;
-
-    const todaysMeals: Meal[] = [];
-    const lunch = todayPlan.meals.lunch;
-    if (lunch.starter) todaysMeals.push(plannedItemToMeal(lunch.starter, 'lunch-starter'));
-    if (lunch.main) todaysMeals.push(plannedItemToMeal(lunch.main, 'lunch-main'));
-    if (lunch.dessert) todaysMeals.push(plannedItemToMeal(lunch.dessert, 'lunch-dessert'));
+  const mealsForFocusedMeal = useMemo(() => {
+    const defaultMeals = currentMealFocus === 'lunch' ? initialMockMealsTodayForLunchDashboard : initialMockMealsTodayForDinnerDashboard;
+    if (!importedWeeklyPlan) return defaultMeals;
     
-    return todaysMeals.length > 0 ? todaysMeals : initialMockMealsTodayForDashboard;
-  }, [importedWeeklyPlan]);
+    const todayPlan = importedWeeklyPlan.find(dayPlan => isToday(parseISO(dayPlan.date)));
+    if (!todayPlan) return defaultMeals;
+
+    const mealData = currentMealFocus === 'lunch' ? todayPlan.meals.lunch : todayPlan.meals.dinner;
+    const todaysFocusedMeals: Meal[] = [];
+    if (mealData.starter) todaysFocusedMeals.push(plannedItemToMeal(mealData.starter, currentMealFocus));
+    if (mealData.main) todaysFocusedMeals.push(plannedItemToMeal(mealData.main, currentMealFocus));
+    if (mealData.dessert) todaysFocusedMeals.push(plannedItemToMeal(mealData.dessert, currentMealFocus));
+    
+    return todaysFocusedMeals.length > 0 ? todaysFocusedMeals : defaultMeals;
+  }, [importedWeeklyPlan, currentMealFocus]);
   
-  const isDisplayingImportedMenuForToday = useMemo(() => {
+  const isDisplayingImportedMenuForFocusedMeal = useMemo(() => {
     if (!importedWeeklyPlan) return false;
     const todayPlan = importedWeeklyPlan.find(dayPlan => isToday(parseISO(dayPlan.date)));
     if (!todayPlan) return false;
-    const lunch = todayPlan.meals.lunch;
-    return !!(lunch.starter || lunch.main || lunch.dessert);
-  }, [importedWeeklyPlan]);
+    const mealData = currentMealFocus === 'lunch' ? todayPlan.meals.lunch : todayPlan.meals.dinner;
+    return !!(mealData.starter || mealData.main || mealData.dessert);
+  }, [importedWeeklyPlan, currentMealFocus]);
 
-  const presentResidentAttendances = useMemo(() => {
+  const presentAttendancesForFocusedMeal = useMemo(() => {
     return dailyAttendanceRecords.filter(a => 
-      a.mealType === 'lunch' && 
+      a.mealType === currentMealFocus && 
       a.status === 'present' && 
       a.date === todayISO &&
       activeResidents.some(ar => ar.id === a.residentId) 
     );
-  }, [activeResidents, dailyAttendanceRecords]);
+  }, [activeResidents, dailyAttendanceRecords, currentMealFocus]);
 
   const totalActiveResidentsCount = activeResidents.length;
-  const presentForLunchCount = presentResidentAttendances.length;
+  const presentForFocusedMealCount = presentAttendancesForFocusedMeal.length;
 
-  const dietSpecificMeals = useMemo(() => {
-    const presentRes = presentResidentAttendances
+  const dietSpecificMealsForFocusedMeal = useMemo(() => {
+    const presentRes = presentAttendancesForFocusedMeal
       .map(att => activeResidents.find(r => r.id === att.residentId))
       .filter((r): r is Resident => !!r);
     
@@ -200,7 +224,7 @@ export default function DashboardPage() {
     'Mixé': presentRes.filter(r => getPreparationTypeForResident(r).startsWith('Mixé')).length,
     'Haché': presentRes.filter(r => getPreparationTypeForResident(r).startsWith('Haché')).length,
     };
-  }, [presentResidentAttendances, activeResidents]);
+  }, [presentAttendancesForFocusedMeal, activeResidents]);
 
   const getNotificationIcon = (type: Notification['type']) => {
     switch (type) {
@@ -219,12 +243,13 @@ export default function DashboardPage() {
     }
   };
   
-  const getAttendanceStatusBadge = (residentId: string, isActive: boolean): React.ReactNode => {
+  // Kept focused on LUNCH for simplicity for this card, can be adapted if needed
+  const getAttendanceStatusBadgeForLunchList = (residentId: string, isActive: boolean): React.ReactNode => {
      if (!isActive) {
       return <Badge variant="outline" className="bg-gray-100 text-gray-600"><UserX className="mr-1 h-4 w-4" />Inactif</Badge>;
     }
     const attendanceRecord = dailyAttendanceRecords.find(
-      (att) => att.residentId === residentId && att.date === todayISO && att.mealType === 'lunch'
+      (att) => att.residentId === residentId && att.date === todayISO && att.mealType === 'lunch' // Explicitly lunch
     );
 
     if (attendanceRecord) {
@@ -240,14 +265,14 @@ export default function DashboardPage() {
     return <Badge variant="outline"><HelpCircle className="mr-1 h-4 w-4" />Non Renseigné</Badge>;
   };
   
-  const getAttendanceNotes = (residentId: string): string => {
+  const getAttendanceNotesForLunchList = (residentId: string): string => {
     const attendanceRecord = dailyAttendanceRecords.find(
-      (att) => att.residentId === residentId && att.date === todayISO && att.mealType === 'lunch'
+      (att) => att.residentId === residentId && att.date === todayISO && att.mealType === 'lunch' // Explicitly lunch
     );
     return attendanceRecord?.notes || '-';
   };
 
-  const globalTextureCountsForLunch = useMemo(() => {
+  const globalTextureCountsForFocusedMeal = useMemo(() => {
     const counts: Record<PreparationType, number> = {
       'Normal': 0,
       'Mixé morceaux': 0,
@@ -255,7 +280,7 @@ export default function DashboardPage() {
       'Haché fin': 0,
       'Haché gros': 0,
     };
-    presentResidentAttendances.forEach(att => {
+    presentAttendancesForFocusedMeal.forEach(att => {
         const resident = activeResidents.find(r => r.id === att.residentId);
         if (resident) {
             const prepType = getPreparationTypeForResident(resident);
@@ -263,7 +288,7 @@ export default function DashboardPage() {
         }
     });
     return counts;
-  }, [presentResidentAttendances, activeResidents]);
+  }, [presentAttendancesForFocusedMeal, activeResidents]);
 
 
   const onFileUpload = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -313,6 +338,8 @@ export default function DashboardPage() {
   }, [dashboardNotifications]);
 
 
+  const focusedMealText = currentMealFocus === 'lunch' ? 'Déjeuner' : 'Dîner';
+
   if (isLoadingResidents && !clientSideRendered) { 
     return (
       <AppLayout>
@@ -327,7 +354,16 @@ export default function DashboardPage() {
   return (
     <AppLayout>
       <div className="space-y-6">
-        <h1 className="text-3xl font-headline font-semibold text-foreground">Tableau de Bord</h1>
+        <div className="flex items-center justify-between">
+            <h1 className="text-3xl font-headline font-semibold text-foreground">Tableau de Bord</h1>
+            {clientSideRendered && currentTime && (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground font-body">
+                    <Clock className="h-4 w-4"/> 
+                    <span>{currentTime} - Vue actuelle: <span className="font-semibold text-primary">{focusedMealText}</span></span>
+                </div>
+            )}
+        </div>
+
 
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           <Card>
@@ -338,20 +374,20 @@ export default function DashboardPage() {
             <CardContent>
               {isLoadingResidents ? <Loader2 className="h-6 w-6 animate-spin text-primary my-1" /> : <div className="text-2xl font-bold font-body">{totalActiveResidentsCount}</div>}
               <p className="text-xs text-muted-foreground font-body">
-                {isLoadingResidents ? "Chargement..." : `${presentForLunchCount} présents au déjeuner aujourd'hui`}
+                {isLoadingResidents ? "Chargement..." : `${presentForFocusedMealCount} présents au ${focusedMealText.toLowerCase()} aujourd'hui`}
               </p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium font-headline">Repas à Préparer (Déjeuner)</CardTitle>
+              <CardTitle className="text-sm font-medium font-headline">Repas à Préparer ({focusedMealText})</CardTitle>
               <UtensilsCrossed className="h-5 w-5 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-            {isLoadingResidents ? <Loader2 className="h-6 w-6 animate-spin text-primary my-1" /> : <div className="text-2xl font-bold font-body">{presentForLunchCount}</div>}
+            {isLoadingResidents ? <Loader2 className="h-6 w-6 animate-spin text-primary my-1" /> : <div className="text-2xl font-bold font-body">{presentForFocusedMealCount}</div>}
               <p className="text-xs text-muted-foreground font-body">
-                {isLoadingResidents ? "Calcul en cours..." : `Basé sur les résidents présents. ${dietSpecificMeals['Sans sel']} sans sel, ${dietSpecificMeals['Végétarien']} végé., ${dietSpecificMeals['Mixé']} mixés, ${dietSpecificMeals['Haché']} hachés.`}
+                {isLoadingResidents ? "Calcul en cours..." : `Basé sur les résidents présents. ${dietSpecificMealsForFocusedMeal['Sans sel']} sans sel, ${dietSpecificMealsForFocusedMeal['Végétarien']} végé., ${dietSpecificMealsForFocusedMeal['Mixé']} mixés, ${dietSpecificMealsForFocusedMeal['Haché']} hachés.`}
               </p>
             </CardContent>
           </Card>
@@ -375,7 +411,7 @@ export default function DashboardPage() {
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div className="flex items-center gap-2">
                     <ClipboardCheck className="h-6 w-6 text-primary" />
-                    <CardTitle className="font-headline">Total Textures à Préparer (Déjeuner)</CardTitle>
+                    <CardTitle className="font-headline">Total Textures à Préparer ({focusedMealText})</CardTitle>
                 </div>
                 <form onSubmit={onFileUpload} className="flex items-center gap-2">
                     <Input
@@ -386,28 +422,30 @@ export default function DashboardPage() {
                 </form>
             </div>
              <CardDescription className="font-body mt-2">
-                Ce récapitulatif des textures est basé sur les résidents marqués comme présents pour le déjeuner.
+                Ce récapitulatif des textures est basé sur les résidents marqués comme présents pour le {focusedMealText.toLowerCase()}.
                 {importedFileName ? (
-                    isDisplayingImportedMenuForToday ? (
-                    <> Le menu du déjeuner provient du fichier importé : <strong>{importedFileName}</strong>.</>
+                    isDisplayingImportedMenuForFocusedMeal ? (
+                    <> Le menu du {focusedMealText.toLowerCase()} provient du fichier importé : <strong>{importedFileName}</strong>.</>
                     ) : (
                     (() => {
                         if (!importedWeeklyPlan) { 
-                        return <> Aucun planning Excel n'est actuellement chargé pour la semaine. Affichage basé sur le menu par défaut pour le déjeuner.</>;
+                        return <> Aucun planning Excel n'est actuellement chargé pour la semaine. Affichage basé sur le menu par défaut pour le {focusedMealText.toLowerCase()}.</>;
                         }
                         const todayPlan = importedWeeklyPlan.find(dayPlan => isToday(parseISO(dayPlan.date)));
-                        if (todayPlan && (todayPlan.meals.lunch.starter || todayPlan.meals.lunch.main || todayPlan.meals.lunch.dessert)) {
-                             return <> Planning <strong>{importedFileName}</strong> chargé. Le menu du jour en provient s'il est complet pour le déjeuner.</>;
-                        } else if (todayPlan) { 
-                            return <> Planning <strong>{importedFileName}</strong> chargé, mais il ne contient pas de plats spécifiés pour le déjeuner d'aujourd'hui (vérifiez 'TypeRepas' et 'RolePlat' dans l'Excel). Affichage basé sur le menu par défaut.</>;
-                        }
-                         else { 
+                        if (todayPlan) {
+                            const mealData = currentMealFocus === 'lunch' ? todayPlan.meals.lunch : todayPlan.meals.dinner;
+                            if (mealData.starter || mealData.main || mealData.dessert) {
+                                return <> Planning <strong>{importedFileName}</strong> chargé. Le menu du jour ({focusedMealText.toLowerCase()}) en provient s'il est complet.</>;
+                            } else {
+                                return <> Planning <strong>{importedFileName}</strong> chargé, mais il ne contient pas de plats spécifiés pour le {focusedMealText.toLowerCase()} d'aujourd'hui (vérifiez 'TypeRepas' et 'RolePlat' dans l'Excel). Affichage basé sur le menu par défaut.</>;
+                            }
+                        } else { 
                             return <> Planning <strong>{importedFileName}</strong> chargé, mais aucun menu n'y est défini pour la date d'aujourd'hui. Affichage basé sur le menu par défaut.</>;
                         }
                     })()
                     )
                 ) : (
-                    <> Aucun planning Excel n'a été importé. Affichage basé sur le menu par défaut pour le déjeuner.</>
+                    <> Aucun planning Excel n'a été importé. Affichage basé sur le menu par défaut pour le {focusedMealText.toLowerCase()}.</>
                 )}
                 {importedFileName && <Button variant="link" size="sm" className="p-0 h-auto text-xs ml-1" onClick={clearImportedPlan}>Effacer le planning importé</Button>}
             </CardDescription>
@@ -418,10 +456,10 @@ export default function DashboardPage() {
                     <Loader2 className="h-8 w-8 animate-spin text-primary" />
                     <p className="ml-2 font-body text-muted-foreground">Chargement des données de préparation...</p>
                 </div>
-            ) : presentForLunchCount > 0 ? (
+            ) : presentForFocusedMealCount > 0 ? (
                 <>
                     {ALL_PREPARATION_TYPES.map(prepType => {
-                        const count = globalTextureCountsForLunch[prepType];
+                        const count = globalTextureCountsForFocusedMeal[prepType];
                         if (count === 0) return null; 
 
                         return (
@@ -430,11 +468,11 @@ export default function DashboardPage() {
                                     <p className="font-body text-lg font-semibold text-primary">{prepType}</p>
                                     <Badge variant="default" className="text-md px-3 py-1">{count}</Badge>
                                 </div>
-                                {mealsToDisplayForDashboard.length > 0 ? (
+                                {mealsForFocusedMeal.length > 0 ? (
                                     <div>
-                                        <h4 className="text-sm font-body font-medium text-muted-foreground mb-1">Plats du menu concernés :</h4>
+                                        <h4 className="text-sm font-body font-medium text-muted-foreground mb-1">Plats du menu ({focusedMealText.toLowerCase()}) concernés :</h4>
                                         <ul className="list-disc list-inside text-sm font-body space-y-0.5 ml-4">
-                                            {mealsToDisplayForDashboard.map(meal => (
+                                            {mealsForFocusedMeal.map(meal => (
                                                 <li key={`${prepType}-${meal.id}`}>
                                                     {meal.name}
                                                     <span className="text-xs text-muted-foreground ml-1">({meal.category})</span>
@@ -443,17 +481,17 @@ export default function DashboardPage() {
                                         </ul>
                                     </div>
                                 ) : (
-                                    <p className="text-sm font-body text-muted-foreground italic">Menu du déjeuner non spécifié (utilisation du menu par défaut).</p>
+                                    <p className="text-sm font-body text-muted-foreground italic">Menu du {focusedMealText.toLowerCase()} non spécifié (utilisation du menu par défaut).</p>
                                 )}
                             </div>
                         );
                     })}
-                    {Object.values(globalTextureCountsForLunch).every(c => c === 0) && (
+                    {Object.values(globalTextureCountsForFocusedMeal).every(c => c === 0) && (
                          <p className="text-muted-foreground font-body text-center py-4">Aucune texture spécifique n'est requise pour les résidents présents, ou les données de texture sont manquantes.</p>
                     )}
                 </>
             ) : (
-                 <p className="text-muted-foreground font-body text-center py-4">Aucun résident présent au déjeuner pour calculer les textures.</p>
+                 <p className="text-muted-foreground font-body text-center py-4">Aucun résident présent au {focusedMealText.toLowerCase()} pour calculer les textures.</p>
             )}
           </CardContent>
         </Card>
@@ -488,9 +526,9 @@ export default function DashboardPage() {
                         </TableCell>
                         <TableCell>{resident?.unit || 'N/A'}</TableCell>
                         <TableCell>
-                          {getAttendanceStatusBadge(resident.id, resident.isActive)}
+                          {getAttendanceStatusBadgeForLunchList(resident.id, resident.isActive)}
                         </TableCell>
-                        <TableCell>{getAttendanceNotes(resident.id)}</TableCell>
+                        <TableCell>{getAttendanceNotesForLunchList(resident.id)}</TableCell>
                       </TableRow>
                     ))}
                 </TableBody>
@@ -535,3 +573,4 @@ export default function DashboardPage() {
     </AppLayout>
   );
 }
+
