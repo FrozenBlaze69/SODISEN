@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import type { Resident, AttendanceRecord, MealLocation, AttendanceStatus, MealType } from '@/types';
+import type { Resident, AttendanceRecord, MealLocation, AttendanceStatus, MealType, Notification } from '@/types';
 import { Save, Undo, ChevronLeft, ChevronRight, Loader2, Users } from 'lucide-react';
 import Image from 'next/image';
 import { onResidentsUpdate } from '@/lib/firebase/firestoreClientService';
@@ -14,6 +14,7 @@ import { useToast } from "@/hooks/use-toast";
 
 const TODAY_ISO = new Date().toISOString().split('T')[0];
 const LOCAL_STORAGE_ATTENDANCE_KEY_PREFIX = 'simulatedDailyAttendance_';
+const SHARED_NOTIFICATIONS_KEY = 'sharedAppNotifications';
 
 // Type for the optimized attendance data structure in state
 type OptimizedAttendanceData = Record<string, {
@@ -41,6 +42,35 @@ const deepCopyOptimizedAttendance = (data: OptimizedAttendanceData): OptimizedAt
   return copy;
 };
 
+// Helper functions for translation
+const translateStatus = (status: AttendanceStatus): string => {
+  switch (status) {
+    case 'present': return 'présent(e)';
+    case 'absent': return 'absent(e)';
+    case 'external': return 'en extérieur';
+    default: return status;
+  }
+};
+
+const translateMealType = (mealType: MealType): string => {
+  switch (mealType) {
+    case 'breakfast': return 'le petit-déjeuner';
+    case 'lunch': return 'le déjeuner';
+    case 'dinner': return 'le dîner';
+    case 'snack': return 'la collation';
+    default: return mealType;
+  }
+};
+
+const translateMealLocation = (location: MealLocation): string => {
+  switch (location) {
+    case 'dining_hall': return 'en salle à manger';
+    case 'room': return 'en chambre';
+    case 'not_applicable': return 'N/A';
+    default: return location;
+  }
+};
+
 
 export default function AttendancePage() {
   const [residents, setResidents] = useState<Resident[]>([]);
@@ -62,7 +92,6 @@ export default function AttendancePage() {
         const storedData = localStorage.getItem(currentLocalStorageKey);
         if (storedData) {
           const parsedData = JSON.parse(storedData) as AttendanceRecord[];
-          // Filter for today's date, though key already does this, it's a good safeguard
           storedAttendanceArray = parsedData.filter(ar => ar.date === TODAY_ISO);
         }
       } catch (e) {
@@ -113,7 +142,7 @@ export default function AttendancePage() {
         if (value === 'absent' || value === 'external') {
           updatedMealData.mealLocation = 'not_applicable';
         } else if (value === 'present' && updatedMealData.mealLocation === 'not_applicable') {
-          updatedMealData.mealLocation = 'dining_hall'; // Default to dining_hall if now present
+          updatedMealData.mealLocation = 'dining_hall'; 
         }
       }
       
@@ -140,14 +169,12 @@ export default function AttendancePage() {
   };
   
   const getNotesForResidentRow = (residentId: string): string => {
-    // Notes are stored with each meal, conventionally the 'dinner' meal is used for general notes input field
     return attendanceData[residentId]?.['dinner']?.notes || '';
   };
 
   const handleNotesChangeForRow = (residentId: string, notesValue: string) => {
     setAttendanceData(prev => {
       const dinnerData = prev[residentId]?.['dinner'] || { status: 'present', mealLocation: 'dining_hall' };
-      // Also update notes for breakfast and lunch if they exist to keep notes consistent across meals for this simulation
       const breakfastData = prev[residentId]?.['breakfast'] || { status: 'present', mealLocation: 'dining_hall' };
       const lunchData = prev[residentId]?.['lunch'] || { status: 'present', mealLocation: 'dining_hall' };
 
@@ -170,7 +197,7 @@ export default function AttendancePage() {
         Object.entries(meals).map(([mealTypeStr, details]) => {
           const mealType = mealTypeStr as MealType;
           return {
-            id: `${residentId}-${mealType}-${TODAY_ISO}`, // Ensure ID is unique enough
+            id: `${residentId}-${mealType}-${TODAY_ISO}`, 
             residentId,
             date: TODAY_ISO,
             mealType,
@@ -182,8 +209,64 @@ export default function AttendancePage() {
       );
       localStorage.setItem(currentLocalStorageKey, JSON.stringify(dataToSave));
       
+      // Generate notifications for changes
+      const newNotifications: Notification[] = [];
+      const residentMap = new Map(residents.map(r => [r.id, r]));
+
+      Object.keys(attendanceData).forEach(residentId => {
+        const resident = residentMap.get(residentId);
+        if (!resident) return;
+
+        MEAL_TYPES.forEach(mealType => {
+          const currentData = attendanceData[residentId]?.[mealType];
+          const initialData = initialAttendanceDataForUndo[residentId]?.[mealType];
+
+          if (!currentData || !initialData) return; 
+
+          // Check status change
+          if (currentData.status !== initialData.status) {
+            newNotifications.push({
+              id: `notif-${Date.now()}-${residentId}-${mealType}-status`,
+              timestamp: new Date().toISOString(),
+              type: currentData.status === 'absent' || currentData.status === 'external' ? 'absence' : 'attendance',
+              title: `Changement de Présence`,
+              message: `${resident.firstName} ${resident.lastName} est maintenant ${translateStatus(currentData.status)} pour ${translateMealType(mealType)}.`,
+              isRead: false,
+              relatedResidentId: residentId,
+            });
+          }
+
+          // Check meal location change (only if present and was present, and new location is not N/A)
+          if (currentData.status === 'present' && initialData.status === 'present' && 
+              currentData.mealLocation !== initialData.mealLocation && 
+              currentData.mealLocation !== 'not_applicable') {
+             newNotifications.push({
+                id: `notif-${Date.now()}-${residentId}-${mealType}-location`,
+                timestamp: new Date().toISOString(),
+                type: 'info',
+                title: `Changement Lieu Repas`,
+                message: `${resident.firstName} ${resident.lastName} mangera ${translateMealLocation(currentData.mealLocation)} pour ${translateMealType(mealType)}.`,
+                isRead: false,
+                relatedResidentId: residentId,
+            });
+          }
+        });
+      });
+
+      if (newNotifications.length > 0) {
+        try {
+          const existingNotificationsRaw = localStorage.getItem(SHARED_NOTIFICATIONS_KEY);
+          let allNotifications: Notification[] = existingNotificationsRaw ? JSON.parse(existingNotificationsRaw) : [];
+          allNotifications = [...newNotifications, ...allNotifications]; 
+          // allNotifications = allNotifications.slice(0, 50); // Optional: Limit stored notifications
+          localStorage.setItem(SHARED_NOTIFICATIONS_KEY, JSON.stringify(allNotifications));
+        } catch (e) {
+          console.error("Error saving new notifications to localStorage", e);
+        }
+      }
+
       setInitialAttendanceDataForUndo(deepCopyOptimizedAttendance(attendanceData));
-      toast({ title: "Présences Enregistrées", description: "Les modifications ont été sauvegardées localement." });
+      toast({ title: "Présences Enregistrées", description: "Les modifications et notifications ont été sauvegardées localement." });
     } catch (e) {
       console.error("Error saving attendance to localStorage", e);
       toast({ variant: "destructive", title: "Erreur de Sauvegarde", description: "Impossible de sauvegarder les présences." });
@@ -319,7 +402,7 @@ export default function AttendancePage() {
                             type="text" 
                             placeholder="Motif absence/externe..." 
                             className="p-2 border rounded-md w-full text-sm" 
-                            value={getNotesForResidentRow(resident.id)} // Notes are now shared, conventionally read from dinner
+                            value={getNotesForResidentRow(resident.id)} 
                             onChange={(e) => handleNotesChangeForRow(resident.id, e.target.value)}
                          />
                       </TableCell>
