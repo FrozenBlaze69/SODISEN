@@ -143,11 +143,9 @@ export default function DashboardPage() {
             if (loadedNotifications.length > 0) {
                  setDashboardNotifications(loadedNotifications.sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
             } else {
-                 // Keep initialMockNotificationsForDashboard if localStorage is empty
                  setDashboardNotifications(initialMockNotificationsForDashboard.sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
             }
         } else {
-            // Keep initialMockNotificationsForDashboard if no localStorage item
             setDashboardNotifications(initialMockNotificationsForDashboard.sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
         }
     } catch (error) {
@@ -395,35 +393,29 @@ export default function DashboardPage() {
                   </form>
               </div>
               <CardDescription className="font-body mt-2">
-                  Ce récapitulatif des textures est basé sur les résidents marqués comme présents pour le {focusedMealText.toLowerCase()}.
-                  {importedFileName ? (
-                      isDisplayingImportedMenuForFocusedMeal ? (
-                      <> Le menu du jour ({focusedMealText.toLowerCase()}) est fourni par votre fichier Excel importé : <strong>{importedFileName}</strong>.</>
-                      ) : (
-                      (() => {
-                          if (!importedWeeklyPlan) { 
-                          return <> Aucun planning Excel n'est actuellement chargé. Affichage basé sur le menu par défaut pour le {focusedMealText.toLowerCase()}. Un fichier Excel peut contenir les menus du déjeuner et du dîner.</>;
-                          }
-                          const todayPlan = importedWeeklyPlan.find(dayPlan => isToday(parseISO(dayPlan.date)));
-                          if (todayPlan) {
-                              const mealData = currentMealFocus === 'lunch' ? todayPlan.meals.lunch : todayPlan.meals.dinner;
-                              if (mealData.starter || mealData.main || mealData.dessert) {
-                                  return <> Le menu du jour ({focusedMealText.toLowerCase()}) est fourni par votre fichier Excel importé : <strong>{importedFileName}</strong>.</>;
-                              } else {
-                                  return <> Le planning Excel (<strong>{importedFileName}</strong>) est chargé, mais il ne contient pas de plats spécifiés pour le {focusedMealText.toLowerCase()} d'aujourd'hui. Vérifiez les colonnes 'TypeRepas' et 'RolePlat' pour cette date et ce type de repas. Affichage basé sur le menu par défaut.</>;
-                              }
-                          } else { 
-                              return <> Le planning Excel (<strong>{importedFileName}</strong>) est chargé, mais aucun menu n'y est défini pour la date d'aujourd'hui. Affichage basé sur le menu par défaut.</>;
-                          }
-                      })()
-                      )
-                  ) : (
-                       <> Aucun planning Excel n'a été importé. Un fichier Excel peut contenir les menus du déjeuner et du dîner. En attendant, l'affichage est basé sur le menu par défaut pour le {focusedMealText.toLowerCase()}.</>
-                  )}
-                  {importedFileName && <Button variant="link" size="sm" className="p-0 h-auto text-xs ml-1" onClick={clearImportedPlan}>Effacer le planning importé</Button>}
+                Ce récapitulatif des textures est basé sur les résidents marqués comme présents pour le {focusedMealText.toLowerCase()}.
+                {importedFileName ? ( // An Excel file has been imported
+                  isDisplayingImportedMenuForFocusedMeal ? ( // And the meals for today's focus ARE from this Excel
+                    <> Les plats listés ci-dessous pour le {focusedMealText.toLowerCase()} proviennent de votre fichier Excel importé : <strong>{importedFileName}</strong>.</>
+                  ) : ( // Excel is imported, BUT meals for today's focus are NOT from it (using defaults)
+                    (() => {
+                      const todayPlan = importedWeeklyPlan!.find(dayPlan => isToday(parseISO(dayPlan.date))); // importedWeeklyPlan is guaranteed by importedFileName
+                      if (todayPlan) {
+                        // Excel has an entry for today, but it's empty for the current meal focus
+                        return <> Le planning Excel (<strong>{importedFileName}</strong>) est chargé. Cependant, il ne contient pas de plats spécifiés pour le {focusedMealText.toLowerCase()} d'aujourd'hui dans ce fichier (vérifiez 'TypeRepas' et 'RolePlat'). Les plats affichés ci-dessous sont donc les plats par défaut.</>;
+                      } else {
+                        // Excel is loaded, but no entry at all for today's date
+                        return <> Le planning Excel (<strong>{importedFileName}</strong>) est chargé, mais aucun menu n'y est défini pour la date d'aujourd'hui. Les plats affichés ci-dessous sont donc les plats par défaut.</>;
+                      }
+                    })()
+                  )
+                ) : ( // No Excel file has been imported
+                  <> Aucun planning Excel n'a été importé. Les plats affichés ci-dessous sont les plats par défaut. Un fichier Excel peut contenir les menus du déjeuner et du dîner.</>
+                )}
+                {importedFileName && <Button variant="link" size="sm" className="p-0 h-auto text-xs ml-1" onClick={clearImportedPlan}>Effacer le planning importé</Button>}
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-3">
               {isLoadingResidents ? (
                   <div className="flex justify-center items-center py-10">
                       <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -459,7 +451,7 @@ export default function DashboardPage() {
                               </div>
                           );
                       })}
-                      {Object.values(globalTextureCountsForFocusedMeal).every(c => c === 0) && (
+                      {Object.values(globalTextureCountsForFocusedMeal).every(c => c === 0) && presentForFocusedMealCount > 0 && (
                            <p className="text-muted-foreground font-body text-center py-4">Aucune texture spécifique n'est requise pour les résidents présents, ou les données de texture sont manquantes.</p>
                       )}
                   </>
