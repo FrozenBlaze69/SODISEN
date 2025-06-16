@@ -4,12 +4,178 @@ import { collection, onSnapshot, query, orderBy } from "firebase/firestore";
 import type { Resident } from '@/types';
 import { RESIDENTS_COLLECTION } from './constants'; // Import the constant
 
+// --- SECTION POUR LES DONNÉES FICTIVES D'APERÇU ---
+// Ces données ne sont utilisées que si la collection 'residents' dans Firestore est vide.
+// Elles permettent d'avoir un aperçu de l'application avec des données.
+// Dès que de vrais résidents sont ajoutés à Firestore, ces données fictives ne sont plus utilisées.
+const mockResidentsForPreview: Resident[] = [
+  {
+    id: 'mockres-1',
+    firstName: 'Alain',
+    lastName: 'Delaroche',
+    unit: 'Unité Bleue',
+    roomNumber: '101',
+    dateOfBirth: '1935-10-05',
+    avatarUrl: 'https://placehold.co/40x40.png?text=AD',
+    medicalSpecificities: 'Hypertension, Mobilité réduite',
+    diets: ['Sans sel', 'Pauvre en sucre'],
+    textures: ['Normal'],
+    allergies: ['Pénicilline'],
+    contraindications: ['Aspirine'],
+    isActive: true,
+  },
+  {
+    id: 'mockres-2',
+    firstName: 'Brigitte',
+    lastName: 'Lefevre',
+    unit: 'Unité Verte',
+    roomNumber: '203',
+    dateOfBirth: '1942-03-12',
+    avatarUrl: 'https://placehold.co/40x40.png?text=BL',
+    medicalSpecificities: 'Diabète type 2',
+    diets: ['Diabétique'],
+    textures: ['Mixé lisse'],
+    allergies: [],
+    contraindications: [],
+    isActive: true,
+  },
+  {
+    id: 'mockres-3',
+    firstName: 'Claude',
+    lastName: 'Moreau',
+    unit: 'Unité Bleue',
+    roomNumber: '105',
+    dateOfBirth: '1938-07-22',
+    avatarUrl: 'https://placehold.co/40x40.png?text=CM',
+    medicalSpecificities: 'Alzheimer léger',
+    diets: [],
+    textures: ['Normal'],
+    allergies: ['Fruits de mer'],
+    contraindications: [],
+    isActive: true,
+  },
+  {
+    id: 'mockres-4',
+    firstName: 'Denise',
+    lastName: 'Garnier',
+    unit: 'Unité Rouge',
+    roomNumber: '301',
+    dateOfBirth: '1945-11-15',
+    avatarUrl: 'https://placehold.co/40x40.png?text=DG',
+    medicalSpecificities: 'Arthrose sévère',
+    diets: [],
+    textures: ['Haché fin'],
+    allergies: [],
+    contraindications: [],
+    isActive: false, 
+  },
+  {
+    id: 'mockres-5',
+    firstName: 'Étienne',
+    lastName: 'Bernard',
+    unit: 'Unité Verte',
+    roomNumber: '207',
+    dateOfBirth: '1933-02-01',
+    avatarUrl: 'https://placehold.co/40x40.png?text=EB',
+    medicalSpecificities: 'Problèmes cardiaques',
+    diets: ['Sans sel', 'Pauvre en cholestérol'],
+    textures: ['Normal'],
+    allergies: [],
+    contraindications: [],
+    isActive: true,
+  },
+  {
+    id: 'mockres-6',
+    firstName: 'Françoise',
+    lastName: 'Petit',
+    unit: 'Unité Rouge',
+    roomNumber: '305',
+    dateOfBirth: '1940-09-30',
+    avatarUrl: 'https://placehold.co/40x40.png?text=FP',
+    medicalSpecificities: '',
+    diets: ['Végétarien'],
+    textures: ['Normal'],
+    allergies: ['Lactose'],
+    contraindications: [],
+    isActive: true,
+  },
+  {
+    id: 'mockres-7',
+    firstName: 'Gérard',
+    lastName: 'Lambert',
+    unit: 'Unité Bleue',
+    roomNumber: '108',
+    dateOfBirth: '1937-06-18',
+    avatarUrl: 'https://placehold.co/40x40.png?text=GL',
+    medicalSpecificities: 'Insuffisance rénale légère',
+    diets: ['Pauvre en potassium'],
+    textures: ['Morceaux tendres'],
+    allergies: [],
+    contraindications: [],
+    isActive: true,
+  },
+  {
+    id: 'mockres-8',
+    firstName: 'Hélène',
+    lastName: 'Roux',
+    unit: 'Unité Verte',
+    roomNumber: '210',
+    dateOfBirth: '1948-04-03',
+    avatarUrl: 'https://placehold.co/40x40.png?text=HR',
+    medicalSpecificities: 'Ostéoporose',
+    diets: ['Riche en calcium'],
+    textures: ['Normal'],
+    allergies: [],
+    contraindications: [],
+    isActive: true,
+  },
+  {
+    id: 'mockres-9',
+    firstName: 'Isabelle',
+    lastName: 'Dubois',
+    unit: 'Unité Rouge',
+    roomNumber: '308',
+    dateOfBirth: '1939-12-25',
+    avatarUrl: 'https://placehold.co/40x40.png?text=ID',
+    medicalSpecificities: 'Faiblesse générale',
+    diets: ['Hypercalorique'],
+    textures: ['Mixé lisse'],
+    allergies: ['Noix'],
+    contraindications: [],
+    isActive: true,
+  },
+  {
+    id: 'mockres-10',
+    firstName: 'Jacques',
+    lastName: 'Mercier',
+    unit: 'Unité Bleue',
+    roomNumber: '112',
+    dateOfBirth: '1930-08-10',
+    avatarUrl: 'https://placehold.co/40x40.png?text=JM',
+    medicalSpecificities: 'Perte d\'appétit',
+    diets: ['Enrichi'],
+    textures: ['Normal'],
+    allergies: [],
+    contraindications: ['Certains anti-inflammatoires'],
+    isActive: true,
+  },
+];
+// --- FIN SECTION POUR LES DONNÉES FICTIVES D'APERÇU ---
+
+
 // This function is for the client, so no 'use server' here.
 // It establishes a real-time listener.
 export function onResidentsUpdate(callback: (residents: Resident[]) => void): () => void {
-  const q = query(collection(db, RESIDENTS_COLLECTION), orderBy("createdAt", "desc"));
+  const q = query(collection(db, RESIDENTS_COLLECTION), orderBy("lastName", "asc")); // Tri par nom de famille
   
   const unsubscribe = onSnapshot(q, (querySnapshot) => {
+    if (querySnapshot.empty) {
+      // Si la base de données est vide, utiliser les données fictives pour l'aperçu
+      console.log("Firestore 'residents' collection is empty. Using mock data for preview.");
+      callback(mockResidentsForPreview);
+      return;
+    }
+
     const residentsList: Resident[] = [];
     querySnapshot.forEach((doc) => {
       const data = doc.data();
@@ -22,19 +188,21 @@ export function onResidentsUpdate(callback: (residents: Resident[]) => void): ()
         medicalSpecificities: data.medicalSpecificities || "",
         unit: data.unit || "Non assignée",
         contraindications: data.contraindications || [],
-        textures: data.textures || [], // Defaulting to empty array if not present
-        diets: data.diets || [],       // Defaulting to empty array if not present
-        dateOfBirth: data.dateOfBirth,
+        textures: data.textures || [],
+        diets: data.diets || [],
+        dateOfBirth: data.dateOfBirth, // Sera une chaîne YYYY-MM-DD si stocké ainsi, ou à convertir si Timestamp
         roomNumber: data.roomNumber,
         avatarUrl: data.avatarUrl,
-        // createdAt is implicitly handled by Firestore and available in doc.metadata or via serverTimestamp on write
+        createdAt: data.createdAt, // Pourrait être un Timestamp Firestore, à gérer côté client si besoin de formater
       });
     });
     callback(residentsList);
   }, (error) => {
     console.error("Error listening to residents collection: ", error);
+    // En cas d'erreur (ex: règles de sécurité), on pourrait aussi renvoyer les mocks pour que l'UI ne soit pas vide
+    // Mais il est préférable de résoudre l'erreur Firestore. Pour l'instant, on ne fait rien de plus que logguer.
+    // callback(mockResidentsForPreview); // Optionnel: utiliser les mocks en cas d'erreur de lecture
   });
 
   return unsubscribe; // Returns the function to unsubscribe
 }
-
