@@ -5,15 +5,18 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import type { Resident } from '@/types';
-import { PlusCircle, MoreHorizontal, FilePenLine, Trash2, Utensils, Stethoscope, Vegan } from 'lucide-react';
+import type { Resident, AttendanceRecord } from '@/types';
+import { PlusCircle, MoreHorizontal, FilePenLine, Trash2, CheckSquare, XSquare, MinusSquare, HelpCircle, UserX, UserCheck } from 'lucide-react';
 import Image from 'next/image';
+import { mockAttendance } from '@/app/page'; // Import mockAttendance from dashboard page
+import { format, parseISO, isToday } from 'date-fns'; // To get today's date consistently
 
-// Mock Data for Residents
+const todayISO = new Date().toISOString().split('T')[0];
+
+// Mock Data for Residents - this should ideally come from a shared source or Firestore
 const mockResidents: Resident[] = [
   { 
     id: '1', firstName: 'Jean', lastName: 'Dupont', roomNumber: '101A', 
-    dietaryRestrictions: [], // Keep for now, may deprecate in favor of 'diets'
     allergies: ['Arachides'], medicalSpecificities: 'Insuffisance cardiaque légère', 
     isActive: true, avatarUrl: 'https://placehold.co/40x40.png',
     unit: 'Unité A', 
@@ -23,7 +26,6 @@ const mockResidents: Resident[] = [
   },
   { 
     id: '2', firstName: 'Aline', lastName: 'Martin', roomNumber: '102B', 
-    dietaryRestrictions: [], 
     allergies: [], medicalSpecificities: 'Difficultés de déglutition', 
     isActive: true, avatarUrl: 'https://placehold.co/40x40.png',
     unit: 'Unité B', 
@@ -33,7 +35,6 @@ const mockResidents: Resident[] = [
   },
   { 
     id: '3', firstName: 'Pierre', lastName: 'Durand', roomNumber: '205A', 
-    dietaryRestrictions: [], 
     allergies: ['Gluten'], medicalSpecificities: '', 
     isActive: true, avatarUrl: 'https://placehold.co/40x40.png',
     unit: 'Unité A', 
@@ -43,34 +44,69 @@ const mockResidents: Resident[] = [
   },
   { 
     id: '4', firstName: 'Sophie', lastName: 'Leroy', roomNumber: '210C', 
-    dietaryRestrictions: [], 
     allergies: ['Lactose', 'Noix'], medicalSpecificities: 'Tendance aux fausses routes', 
-    isActive: false, avatarUrl: 'https://placehold.co/40x40.png',
+    isActive: false, avatarUrl: 'https://placehold.co/40x40.png', // This resident is inactive
     unit: 'Unité B', 
     contraindications: ['Fruits à coque'], 
     textures: ['Normal'], 
     diets: [] 
   },
+   { 
+    id: '6', firstName: 'Sophie', lastName: 'Petit', roomNumber: '203C', // Same as resident 6 from dashboard
+    allergies: [], medicalSpecificities: '', 
+    isActive: true, avatarUrl: 'https://placehold.co/40x40.png',
+    unit: 'Unité B', contraindications: ['Soja'], 
+    textures: ['Normal'], diets: ['Diabétique'] 
+  },
 ];
 
+
 export default function ResidentsPage() {
+
+  const getResidentLunchStatus = (residentId: string, isActive: boolean): React.ReactNode => {
+    if (!isActive) {
+      return <Badge variant="outline" className="bg-gray-100 text-gray-600"><UserX className="mr-1 h-4 w-4" />Inactif</Badge>;
+    }
+
+    const attendanceRecord = mockAttendance.find(
+      att => att.residentId === residentId && att.date === todayISO && att.mealType === 'lunch'
+    );
+
+    if (attendanceRecord) {
+      switch (attendanceRecord.status) {
+        case 'present':
+          return <Badge variant="default" className="bg-green-100 text-green-700"><UserCheck className="mr-1 h-4 w-4" />Présent(e)</Badge>;
+        case 'absent':
+          return <Badge variant="destructive" className="bg-red-100 text-red-700"><UserX className="mr-1 h-4 w-4" />Absent(e)</Badge>;
+        case 'external':
+          return <Badge variant="secondary" className="bg-yellow-100 text-yellow-700"><MinusSquare className="mr-1 h-4 w-4" />Extérieur</Badge>;
+        default:
+          return <Badge variant="outline"><HelpCircle className="mr-1 h-4 w-4" />Non Renseigné</Badge>;
+      }
+    }
+    return <Badge variant="outline"><HelpCircle className="mr-1 h-4 w-4" />Présence Non Renseignée</Badge>;
+  };
+
+
   return (
     <AppLayout>
       <div className="space-y-6">
         <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-headline font-semibold text-foreground">Gestion des Résidents</h1>
-          <Button className="font-body">
-            <PlusCircle className="mr-2 h-5 w-5" />
-            Ajouter Résident
+          <h1 className="text-3xl font-headline font-semibold text-foreground">Liste des Résidents</h1>
+          {/* Link to manage-residents page might be more appropriate here */}
+          <Button asChild className="font-body"> 
+            <a href="/manage-residents">
+              <PlusCircle className="mr-2 h-5 w-5" />
+              Gérer les Résidents
+            </a>
           </Button>
         </div>
 
         <Card>
           <CardHeader>
-            <CardTitle className="font-headline">Liste des Résidents</CardTitle>
+            <CardTitle className="font-headline">Informations des Résidents</CardTitle>
             <CardDescription className="font-body">
-              Consultez et gérez les informations des résidents.
-              {/* TODO: Ajouter filtres par unité ici */}
+              Consultez les informations des résidents et leur statut de présence au déjeuner du jour.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -81,11 +117,10 @@ export default function ResidentsPage() {
                   <TableHead className="font-headline">Nom</TableHead>
                   <TableHead className="font-headline">Unité</TableHead>
                   <TableHead className="font-headline">Chambre</TableHead>
-                  <TableHead className="font-headline">Régimes (Diets)</TableHead>
+                  <TableHead className="font-headline">Statut (Déjeuner)</TableHead>
+                  <TableHead className="font-headline">Régimes</TableHead>
                   <TableHead className="font-headline">Textures</TableHead>
                   <TableHead className="font-headline">Allergies</TableHead>
-                  <TableHead className="font-headline">Contre-ind.</TableHead>
-                  <TableHead className="font-headline">Statut</TableHead>
                   <TableHead className="text-right font-headline">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -106,6 +141,9 @@ export default function ResidentsPage() {
                     <TableCell>{resident.unit}</TableCell>
                     <TableCell>{resident.roomNumber || 'N/A'}</TableCell>
                     <TableCell>
+                        {getResidentLunchStatus(resident.id, resident.isActive)}
+                    </TableCell>
+                    <TableCell>
                       {resident.diets.length > 0 ? 
                         resident.diets.map(d => <Badge key={d} variant="secondary" className="mr-1 mb-1 whitespace-nowrap">{d}</Badge>) : 
                         '-'}
@@ -117,18 +155,8 @@ export default function ResidentsPage() {
                     </TableCell>
                     <TableCell>
                       {resident.allergies.length > 0 ? 
-                        resident.allergies.map(allergy => <Badge key={allergy} variant="destructive" className="mr-1 mb-1 whitespace-nowrap">{allergy}</Badge>) : 
+                        resident.allergies.map(allergy => <Badge key={allergy} variant="destructive" className="bg-red-100 text-red-500 mr-1 mb-1 whitespace-nowrap">{allergy}</Badge>) : 
                         '-'}
-                    </TableCell>
-                    <TableCell>
-                      {resident.contraindications.length > 0 ? 
-                        resident.contraindications.map(ci => <Badge key={ci} variant="destructive" className="bg-orange-100 text-orange-700 mr-1 mb-1 whitespace-nowrap">{ci}</Badge>) : 
-                        '-'}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={resident.isActive ? 'default' : 'outline'} className={resident.isActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}>
-                        {resident.isActive ? 'Actif' : 'Inactif'}
-                      </Badge>
                     </TableCell>
                     <TableCell className="text-right">
                       <DropdownMenu>
@@ -139,14 +167,11 @@ export default function ResidentsPage() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => alert(`Redirection vers modification de ${resident.firstName} (à implémenter)`)}>
                             <FilePenLine className="mr-2 h-4 w-4" />
-                            Modifier {/* TODO: Implémenter formulaire de modification */}
+                            Modifier Fiche Résident
                           </DropdownMenuItem>
-                          <DropdownMenuItem className="text-destructive focus:text-destructive focus:bg-destructive/10">
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            Supprimer
-                          </DropdownMenuItem>
+                           {/* L'option de suppression d'un résident serait plutôt sur manage-residents */}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>
@@ -160,3 +185,5 @@ export default function ResidentsPage() {
     </AppLayout>
   );
 }
+
+    

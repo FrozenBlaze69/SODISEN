@@ -7,8 +7,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import type { Notification, Resident, AttendanceRecord, Meal, WeeklyDayPlan, PlannedMealItem } from '@/types';
-import { AlertTriangle, CheckCircle2, Info, Users, UtensilsCrossed, BellRing, ClipboardCheck, Upload, Plus, Minus, Building } from 'lucide-react';
+import type { Notification, Resident, AttendanceRecord, Meal, WeeklyDayPlan, PlannedMealItem, MealType as AppMealType } from '@/types'; // Renamed MealType to AppMealType to avoid conflict
+import { AlertTriangle, CheckCircle2, Info, Users, UtensilsCrossed, BellRing, ClipboardCheck, Upload, Plus, Minus, Building, CheckSquare, XSquare, MinusSquare, HelpCircle, UserX } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { Input } from '@/components/ui/input';
@@ -26,15 +26,17 @@ const mockResidents: Resident[] = [
   { id: '4', firstName: 'Lucie', lastName: 'Tremblay', roomNumber: '201A', allergies: [], medicalSpecificities: '', isActive: true, avatarUrl: 'https://placehold.co/40x40.png', unit: 'Unité A', contraindications: [], textures: ['Normal'], diets: [] },
   { id: '5', firstName: 'Ahmed', lastName: 'Benali', roomNumber: '202B', allergies: [], medicalSpecificities: 'Difficultés de déglutition', isActive: true, avatarUrl: 'https://placehold.co/40x40.png', unit: 'Unité B', contraindications: [], textures: ['Mixé morceaux'], diets: ['Sans porc'] },
   { id: '6', firstName: 'Sophie', lastName: 'Petit', roomNumber: '203C', allergies: [], medicalSpecificities: '', isActive: true, avatarUrl: 'https://placehold.co/40x40.png', unit: 'Unité B', contraindications: ['Soja'], textures: ['Normal'], diets: ['Diabétique'] },
+  { id: '7', firstName: 'Paul', lastName: 'Marchand', roomNumber: '301A', allergies: [], medicalSpecificities: '', isActive: false, avatarUrl: 'https://placehold.co/40x40.png', unit: 'Unité A', contraindications: [], textures: ['Normal'], diets: [] },
 ];
 
-const mockAttendance: AttendanceRecord[] = [
-  { id: 'att1', residentId: '1', date: todayISO, mealType: 'lunch', status: 'present' },
-  { id: 'att2', residentId: '2', date: todayISO, mealType: 'lunch', status: 'present' },
-  { id: 'att3', residentId: '3', date: todayISO, mealType: 'lunch', status: 'present' },
-  { id: 'att4', residentId: '4', date: todayISO, mealType: 'lunch', status: 'present' },
-  { id: 'att5', residentId: '5', date: todayISO, mealType: 'lunch', status: 'present' },
-  { id: 'att6', residentId: '6', date: todayISO, mealType: 'lunch', status: 'absent', notes: 'Rendez-vous coiffeur' },
+export const mockAttendance: AttendanceRecord[] = [
+  { id: 'att1', residentId: '1', date: todayISO, mealType: 'lunch', status: 'present', mealLocation: 'dining_hall' },
+  { id: 'att2', residentId: '2', date: todayISO, mealType: 'lunch', status: 'present', mealLocation: 'room' },
+  { id: 'att3', residentId: '3', date: todayISO, mealType: 'lunch', status: 'present', mealLocation: 'dining_hall' },
+  { id: 'att4', residentId: '4', date: todayISO, mealType: 'lunch', status: 'present', mealLocation: 'dining_hall' },
+  { id: 'att5', residentId: '5', date: todayISO, mealType: 'lunch', status: 'present', mealLocation: 'room' },
+  { id: 'att6', residentId: '6', date: todayISO, mealType: 'lunch', status: 'absent', notes: 'Rendez-vous coiffeur', mealLocation: 'not_applicable' },
+  // No attendance for resident 7 as they are inactive
 ];
 
 // This will be our fallback if no weekly plan is loaded or today's meals aren't in the plan
@@ -90,16 +92,13 @@ export default function DashboardPage() {
 
   useEffect(() => {
     setClientSideRendered(true);
-    // Try to load from localStorage on initial mount
     const storedPlan = localStorage.getItem('currentWeeklyPlan');
     if (storedPlan) {
       try {
         const parsedPlan = JSON.parse(storedPlan);
         setImportedWeeklyPlan(parsedPlan);
-        // Potentially store filename in localStorage too if needed for persistence across sessions
         const storedFileName = localStorage.getItem('currentWeeklyPlanFileName');
         if(storedFileName) setImportedFileName(storedFileName);
-
       } catch (e) {
         console.error("Error parsing stored weekly plan:", e);
         localStorage.removeItem('currentWeeklyPlan');
@@ -110,38 +109,33 @@ export default function DashboardPage() {
 
   const mealsToDisplayForDashboard = useMemo(() => {
     if (!importedWeeklyPlan) return initialMockMealsTodayForDashboard;
-
     const todayPlan = importedWeeklyPlan.find(dayPlan => isToday(parseISO(dayPlan.date)));
-    
     if (!todayPlan) return initialMockMealsTodayForDashboard;
 
     const todaysMeals: Meal[] = [];
     const lunch = todayPlan.meals.lunch;
-    const dinner = todayPlan.meals.dinner; // Assuming dashboard might eventually show dinner prep too
-
-    // For dashboard, we are primarily interested in lunch for now
     if (lunch.starter) todaysMeals.push(plannedItemToMeal(lunch.starter, 'lunch-starter'));
     if (lunch.main) todaysMeals.push(plannedItemToMeal(lunch.main, 'lunch-main'));
     if (lunch.dessert) todaysMeals.push(plannedItemToMeal(lunch.dessert, 'lunch-dessert'));
     
-    // If no lunch meals are specifically found for today, fall back.
     return todaysMeals.length > 0 ? todaysMeals : initialMockMealsTodayForDashboard;
-
   }, [importedWeeklyPlan]);
 
-
-  const presentResidentAttendances = useMemo(() => {
-    return mockAttendance.filter(a => a.mealType === 'lunch' && a.status === 'present' && a.date === todayISO);
-  }, []);
-
   const activeResidents = useMemo(() => mockResidents.filter(r => r.isActive), []);
+  
+  const presentResidentAttendances = useMemo(() => {
+    return mockAttendance.filter(a => 
+      a.mealType === 'lunch' && 
+      a.status === 'present' && 
+      a.date === todayISO &&
+      activeResidents.some(ar => ar.id === a.residentId) // Ensure the resident is currently active
+    );
+  }, [activeResidents]);
 
   const residentsByUnit = useMemo(() => {
     return activeResidents.reduce((acc, resident) => {
       const unit = resident.unit || 'Non spécifiée';
-      if (!acc[unit]) {
-        acc[unit] = [];
-      }
+      if (!acc[unit]) acc[unit] = [];
       acc[unit].push(resident);
       return acc;
     }, {} as Record<string, Resident[]>);
@@ -157,8 +151,7 @@ export default function DashboardPage() {
     return units;
   }, [residentsByUnit, presentResidentAttendances]);
 
-
-  const totalResidents = activeResidents.length;
+  const totalActiveResidentsCount = activeResidents.length;
   const presentForLunchCount = presentResidentAttendances.length;
 
   const dietSpecificMeals = useMemo(() => {
@@ -174,7 +167,6 @@ export default function DashboardPage() {
     };
   }, [presentResidentAttendances, activeResidents]);
 
-
   const getNotificationIcon = (type: Notification['type']) => {
     switch (type) {
       case 'allergy_alert':
@@ -183,10 +175,26 @@ export default function DashboardPage() {
       case 'absence':
       case 'outing':
         return <Info className="h-5 w-5 text-yellow-500" />;
+      case 'urgent_diet_request':
+        return <UtensilsCrossed className="h-5 w-5 text-orange-600" />;
       default:
         return <CheckCircle2 className="h-5 w-5 text-green-500" />;
     }
   };
+  
+  const getAttendanceStatusBadge = (status: AttendanceRecord['status']) => {
+    switch (status) {
+      case 'present':
+        return <Badge variant="default" className="bg-green-100 text-green-700"><CheckSquare className="mr-1 h-4 w-4" />Présent(e)</Badge>;
+      case 'absent':
+        return <Badge variant="destructive" className="bg-red-100 text-red-700"><XSquare className="mr-1 h-4 w-4" />Absent(e)</Badge>;
+      case 'external':
+        return <Badge variant="secondary" className="bg-yellow-100 text-yellow-700"><MinusSquare className="mr-1 h-4 w-4" />Extérieur</Badge>;
+      default:
+        return <Badge variant="outline"><HelpCircle className="mr-1 h-4 w-4" />Non Renseigné</Badge>;
+    }
+  };
+
 
   const categorizedMealsForDashboard: Record<string, Meal[]> = useMemo(() =>
     mealsToDisplayForDashboard.reduce((acc, meal) => {
@@ -223,15 +231,13 @@ export default function DashboardPage() {
           if (meal.allergenTags?.some(allergen => resident.allergies.includes(allergen))) {
             return;
           }
-          if (meal.category === 'main') { // Logic specific for main course, adapt if needed for others
+          if (meal.category === 'main') { 
             const isResidentVegetarian = resident.diets.includes('Végétarien');
             const isMealVegetarian = meal.dietTags?.includes('Végétarien');
             if (isResidentVegetarian && !isMealVegetarian) {
-                // If resident is vegetarian and current meal isn't, check if a vegetarian main is available at all today
                 const vegAlternativeExists = mealsToDisplayForDashboard.some(m => m.category === 'main' && m.dietTags?.includes('Végétarien'));
-                if (vegAlternativeExists) return; // Skip non-veg meal for veg resident if veg alternative exists
+                if (vegAlternativeExists) return; 
             }
-            // Example for "Sans sel" - if resident needs "Sans sel" and meal isn't tagged, skip for this resident
             if (resident.diets.includes('Sans sel') && !meal.dietTags?.includes('Sans sel')) {
                  return;
             }
@@ -311,19 +317,10 @@ export default function DashboardPage() {
         if (fileInputRef.current) fileInputRef.current.value = "";
       } else {
         toast({ variant: "destructive", title: "Échec de l'importation", description: result.message || "Erreur importation."});
-        // Potentially clear localStorage or revert to a default state if needed
-        // setImportedWeeklyPlan(null); 
-        // setImportedFileName(null);
-        // localStorage.removeItem('currentWeeklyPlan');
-        // localStorage.removeItem('currentWeeklyPlanFileName');
       }
     } catch (error) {
       console.error("Upload error:", error);
       toast({ variant: "destructive", title: "Erreur d'importation", description: "Erreur inattendue." });
-      // setImportedWeeklyPlan(null);
-      // setImportedFileName(null);
-      // localStorage.removeItem('currentWeeklyPlan');
-      // localStorage.removeItem('currentWeeklyPlanFileName');
     }
   };
 
@@ -344,26 +341,26 @@ export default function DashboardPage() {
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium font-headline">Résidents Actifs</CardTitle>
+              <CardTitle className="text-sm font-medium font-headline">Total Résidents Actifs</CardTitle>
               <Users className="h-5 w-5 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold font-body">{totalResidents}</div>
+              <div className="text-2xl font-bold font-body">{totalActiveResidentsCount}</div>
               <p className="text-xs text-muted-foreground font-body">
-                {presentForLunchCount} présents au déjeuner
+                {presentForLunchCount} présents au déjeuner aujourd'hui
               </p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium font-headline">Repas à Préparer (Déjeuner Global)</CardTitle>
+              <CardTitle className="text-sm font-medium font-headline">Repas à Préparer (Déjeuner)</CardTitle>
               <UtensilsCrossed className="h-5 w-5 text-muted-foreground" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold font-body">{presentForLunchCount}</div>
               <p className="text-xs text-muted-foreground font-body">
-                {dietSpecificMeals['Sans sel']} sans sel, {dietSpecificMeals['Végétarien']} végé., {dietSpecificMeals['Mixé']} mixés, {dietSpecificMeals['Haché']} hachés
+                Basé sur les résidents présents. {dietSpecificMeals['Sans sel']} sans sel, {dietSpecificMeals['Végétarien']} végé., {dietSpecificMeals['Mixé']} mixés, {dietSpecificMeals['Haché']} hachés.
               </p>
             </CardContent>
           </Card>
@@ -492,7 +489,7 @@ export default function DashboardPage() {
           <Card>
             <CardHeader>
               <CardTitle className="font-headline">Aperçu des Présences (Déjeuner)</CardTitle>
-              <CardDescription className="font-body">Liste des résidents et leur statut pour le déjeuner.</CardDescription>
+              <CardDescription className="font-body">Liste des résidents et leur statut pour le déjeuner du jour.</CardDescription>
             </CardHeader>
             <CardContent>
               <Table>
@@ -500,12 +497,12 @@ export default function DashboardPage() {
                   <TableRow>
                     <TableHead className="font-headline">Résident</TableHead>
                     <TableHead className="font-headline">Unité</TableHead>
-                    <TableHead className="font-headline">Statut</TableHead>
+                    <TableHead className="font-headline">Statut Déjeuner</TableHead>
                     <TableHead className="font-headline">Notes</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {mockAttendance.filter(att => att.mealType === 'lunch' && att.date === todayISO).slice(0,4).map(att => {
+                  {mockAttendance.filter(att => att.mealType === 'lunch' && att.date === todayISO && activeResidents.some(r => r.id === att.residentId) ).slice(0,4).map(att => {
                     const resident = activeResidents.find(r => r.id === att.residentId);
                     return (
                       <TableRow key={att.id} className="font-body">
@@ -515,9 +512,7 @@ export default function DashboardPage() {
                         </TableCell>
                         <TableCell>{resident?.unit || 'N/A'}</TableCell>
                         <TableCell>
-                          <Badge variant={att.status === 'present' ? 'default' : att.status === 'absent' ? 'destructive' : 'secondary'} className={att.status === 'present' ? 'bg-green-100 text-green-700' : att.status === 'absent' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}>
-                            {att.status === 'present' ? 'Présent(e)' : att.status === 'absent' ? 'Absent(e)' : 'Extérieur'}
-                          </Badge>
+                          {getAttendanceStatusBadge(att.status)}
                         </TableCell>
                         <TableCell>{att.notes || '-'}</TableCell>
                       </TableRow>
@@ -558,3 +553,5 @@ export default function DashboardPage() {
     </AppLayout>
   );
 }
+
+    
