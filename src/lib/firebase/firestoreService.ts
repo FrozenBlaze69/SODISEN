@@ -36,6 +36,15 @@ import type { Resident } from '@/types';
 // createdAt sera géré par serverTimestamp, id est généré ou fourni pour la mise à jour
 export type ResidentFormData = Omit<Resident, 'id' | 'createdAt'>;
 
+/**
+ * Ajoute un nouveau résident ou met à jour un résident existant dans Firestore.
+ * La collection `RESIDENTS_COLLECTION` (par exemple, "residents") sera automatiquement
+ * créée dans Firestore si elle n'existe pas lors du premier ajout réussi d'un document.
+ * @param residentData Les données du résident à sauvegarder.
+ * @param residentId L'ID du résident à mettre à jour. Si non fourni, un nouveau résident sera créé.
+ * @returns L'ID du résident ajouté ou mis à jour.
+ * @throws Error si la sauvegarde échoue.
+ */
 export async function addOrUpdateResident(residentData: ResidentFormData, residentId?: string): Promise<string> {
   try {
     const dataWithTimestamp = {
@@ -109,3 +118,4 @@ export async function deleteResidentFromFirestore(residentId: string): Promise<v
 //    sont autorisées pour la collection 'residents'.
 // 3. CONSULTEZ LA CONSOLE DU NAVIGATEUR ET DU SERVEUR (TERMINAL NEXTJS) : Des messages d'erreur
 //    plus détaillés y apparaîtront.
+    
