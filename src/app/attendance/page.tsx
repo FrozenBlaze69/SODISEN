@@ -23,6 +23,25 @@ type OptimizedAttendanceData = Record<string, {
 
 const MEAL_TYPES: MealType[] = ['breakfast', 'lunch', 'dinner'];
 
+// Helper function for deep copying the OptimizedAttendanceData structure
+const deepCopyOptimizedAttendance = (data: OptimizedAttendanceData): OptimizedAttendanceData => {
+  const copy: OptimizedAttendanceData = {};
+  for (const residentId in data) {
+    copy[residentId] = {};
+    const meals = data[residentId];
+    if (meals) {
+      for (const mealType in meals) {
+        const mealDetails = meals[mealType as MealType];
+        if (mealDetails) {
+          copy[residentId]![mealType as MealType] = { ...mealDetails };
+        }
+      }
+    }
+  }
+  return copy;
+};
+
+
 export default function AttendancePage() {
   const [residents, setResidents] = useState<Resident[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -43,6 +62,7 @@ export default function AttendancePage() {
         const storedData = localStorage.getItem(currentLocalStorageKey);
         if (storedData) {
           const parsedData = JSON.parse(storedData) as AttendanceRecord[];
+          // Filter for today's date, though key already does this, it's a good safeguard
           storedAttendanceArray = parsedData.filter(ar => ar.date === TODAY_ISO);
         }
       } catch (e) {
@@ -59,11 +79,10 @@ export default function AttendancePage() {
           if (existingRecord) {
             newAttendanceDataObject[resident.id]![mealType] = {
               status: existingRecord.status,
-              mealLocation: existingRecord.mealLocation || 'not_applicable', // Ensure mealLocation has a fallback
+              mealLocation: existingRecord.mealLocation || 'not_applicable',
               notes: existingRecord.notes || '',
             };
           } else {
-            // Default values if no record found in localStorage
             newAttendanceDataObject[resident.id]![mealType] = {
               status: 'present',
               mealLocation: 'dining_hall',
@@ -74,17 +93,11 @@ export default function AttendancePage() {
       });
 
       setAttendanceData(newAttendanceDataObject);
-      // Deep copy for undo state
-      try {
-        setInitialAttendanceDataForUndo(JSON.parse(JSON.stringify(newAttendanceDataObject)));
-      } catch (e) {
-        console.error("Error deep copying attendance data for undo state:", e);
-        setInitialAttendanceDataForUndo({}); // Fallback to empty or handle error
-      }
+      setInitialAttendanceDataForUndo(deepCopyOptimizedAttendance(newAttendanceDataObject));
       setIsLoading(false);
     });
     return () => unsubscribe();
-  }, [currentLocalStorageKey]); // MEAL_TYPES is constant, TODAY_ISO (via key) is constant for the session
+  }, [currentLocalStorageKey]);
 
   const handleAttendanceChange = (
     residentId: string,
@@ -100,7 +113,7 @@ export default function AttendancePage() {
         if (value === 'absent' || value === 'external') {
           updatedMealData.mealLocation = 'not_applicable';
         } else if (value === 'present' && updatedMealData.mealLocation === 'not_applicable') {
-          updatedMealData.mealLocation = 'dining_hall';
+          updatedMealData.mealLocation = 'dining_hall'; // Default to dining_hall if now present
         }
       }
       
@@ -123,26 +136,28 @@ export default function AttendancePage() {
     if (mealData) {
       return mealData[field];
     }
-    // Fallback defaults, though initialization should prevent needing these for active residents
     return field === 'status' ? 'present' : 'dining_hall';
   };
   
   const getNotesForResidentRow = (residentId: string): string => {
-    // Notes are conventionally stored with the 'dinner' meal for the day
+    // Notes are stored with each meal, conventionally the 'dinner' meal is used for general notes input field
     return attendanceData[residentId]?.['dinner']?.notes || '';
   };
 
   const handleNotesChangeForRow = (residentId: string, notesValue: string) => {
     setAttendanceData(prev => {
       const dinnerData = prev[residentId]?.['dinner'] || { status: 'present', mealLocation: 'dining_hall' };
+      // Also update notes for breakfast and lunch if they exist to keep notes consistent across meals for this simulation
+      const breakfastData = prev[residentId]?.['breakfast'] || { status: 'present', mealLocation: 'dining_hall' };
+      const lunchData = prev[residentId]?.['lunch'] || { status: 'present', mealLocation: 'dining_hall' };
+
       return {
         ...prev,
         [residentId]: {
           ...prev[residentId],
-          ['dinner']: { // Assuming notes are tied to the dinner record for the row
-            ...dinnerData,
-            notes: notesValue,
-          }
+          ['breakfast']: { ...breakfastData, notes: notesValue },
+          ['lunch']: { ...lunchData, notes: notesValue },
+          ['dinner']: { ...dinnerData, notes: notesValue },
         }
       };
     });
@@ -155,7 +170,7 @@ export default function AttendancePage() {
         Object.entries(meals).map(([mealTypeStr, details]) => {
           const mealType = mealTypeStr as MealType;
           return {
-            id: `${residentId}-${mealType}-${TODAY_ISO}`,
+            id: `${residentId}-${mealType}-${TODAY_ISO}`, // Ensure ID is unique enough
             residentId,
             date: TODAY_ISO,
             mealType,
@@ -167,12 +182,7 @@ export default function AttendancePage() {
       );
       localStorage.setItem(currentLocalStorageKey, JSON.stringify(dataToSave));
       
-      // Deep copy for undo state
-      try {
-        setInitialAttendanceDataForUndo(JSON.parse(JSON.stringify(attendanceData)));
-      } catch (e) {
-         console.error("Error deep copying on save for undo state:", e);
-      }
+      setInitialAttendanceDataForUndo(deepCopyOptimizedAttendance(attendanceData));
       toast({ title: "Présences Enregistrées", description: "Les modifications ont été sauvegardées localement." });
     } catch (e) {
       console.error("Error saving attendance to localStorage", e);
@@ -181,13 +191,7 @@ export default function AttendancePage() {
   };
 
   const handleUndoChanges = () => {
-    // Restore from the deep copied initial state
-    try {
-        setAttendanceData(JSON.parse(JSON.stringify(initialAttendanceDataForUndo)));
-    } catch (e) {
-        console.error("Error deep copying on undo:", e);
-        // Potentially refetch or reset to a known good state if undo fails catastrophically
-    }
+    setAttendanceData(deepCopyOptimizedAttendance(initialAttendanceDataForUndo));
     toast({ title: "Modifications Annulées", description: "Les présences ont été réinitialisées." });
   };
 
@@ -225,7 +229,7 @@ export default function AttendancePage() {
           <CardHeader>
             <CardTitle className="font-headline">Grille des Présences du {new Date(TODAY_ISO).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}</CardTitle>
             <CardDescription className="font-body">
-              Modifiez les présences et cliquez sur "Enregistrer Présences".
+              Modifiez les présences et cliquez sur "Enregistrer Présences". Les notes générales sont partagées pour tous les repas du résident pour ce jour.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -315,7 +319,7 @@ export default function AttendancePage() {
                             type="text" 
                             placeholder="Motif absence/externe..." 
                             className="p-2 border rounded-md w-full text-sm" 
-                            value={getNotesForResidentRow(resident.id)}
+                            value={getNotesForResidentRow(resident.id)} // Notes are now shared, conventionally read from dinner
                             onChange={(e) => handleNotesChangeForRow(resident.id, e.target.value)}
                          />
                       </TableCell>
@@ -331,4 +335,3 @@ export default function AttendancePage() {
     </AppLayout>
   );
 }
-
