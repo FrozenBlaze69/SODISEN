@@ -5,11 +5,9 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { AppLayout } from '@/components/layout/app-layout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import type { Notification, Resident, AttendanceRecord, Meal, WeeklyDayPlan, PlannedMealItem, MealType } from '@/types';
-import { AlertTriangle, CheckCircle2, Info, Users, UtensilsCrossed, BellRing, ClipboardCheck, Upload, Building, CheckSquare, XSquare, MinusSquare, HelpCircle, UserX, Loader2, ServerCrash, Clock } from 'lucide-react';
-import Image from 'next/image';
+import { AlertTriangle, CheckCircle2, Info, Users, UtensilsCrossed, BellRing, ClipboardCheck, Upload, Loader2, Clock } from 'lucide-react';
 import Link from 'next/link';
 import { Input } from '@/components/ui/input';
 import { useToast } from "@/hooks/use-toast";
@@ -145,9 +143,11 @@ export default function DashboardPage() {
             if (loadedNotifications.length > 0) {
                  setDashboardNotifications(loadedNotifications.sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
             } else {
+                 // Keep initialMockNotificationsForDashboard if localStorage is empty
                  setDashboardNotifications(initialMockNotificationsForDashboard.sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
             }
         } else {
+            // Keep initialMockNotificationsForDashboard if no localStorage item
             setDashboardNotifications(initialMockNotificationsForDashboard.sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
         }
     } catch (error) {
@@ -243,34 +243,6 @@ export default function DashboardPage() {
     }
   };
   
-  // Kept focused on LUNCH for simplicity for this card, can be adapted if needed
-  const getAttendanceStatusBadgeForLunchList = (residentId: string, isActive: boolean): React.ReactNode => {
-     if (!isActive) {
-      return <Badge variant="outline" className="bg-gray-100 text-gray-600"><UserX className="mr-1 h-4 w-4" />Inactif</Badge>;
-    }
-    const attendanceRecord = dailyAttendanceRecords.find(
-      (att) => att.residentId === residentId && att.date === todayISO && att.mealType === 'lunch' // Explicitly lunch
-    );
-
-    if (attendanceRecord) {
-      switch (attendanceRecord.status) {
-        case 'present':
-          return <Badge variant="default" className="bg-green-100 text-green-700"><CheckSquare className="mr-1 h-4 w-4" />Présent(e)</Badge>;
-        case 'absent':
-          return <Badge variant="destructive" className="bg-red-100 text-red-700"><XSquare className="mr-1 h-4 w-4" />Absent(e)</Badge>;
-        case 'external':
-          return <Badge variant="secondary" className="bg-yellow-100 text-yellow-700"><MinusSquare className="mr-1 h-4 w-4" />Extérieur</Badge>;
-      }
-    }
-    return <Badge variant="outline"><HelpCircle className="mr-1 h-4 w-4" />Non Renseigné</Badge>;
-  };
-  
-  const getAttendanceNotesForLunchList = (residentId: string): string => {
-    const attendanceRecord = dailyAttendanceRecords.find(
-      (att) => att.residentId === residentId && att.date === todayISO && att.mealType === 'lunch' // Explicitly lunch
-    );
-    return attendanceRecord?.notes || '-';
-  };
 
   const globalTextureCountsForFocusedMeal = useMemo(() => {
     const counts: Record<PreparationType, number> = {
@@ -406,137 +378,94 @@ export default function DashboardPage() {
           </Card>
         </div>
 
-        <Card>
-          <CardHeader>
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                <div className="flex items-center gap-2">
-                    <ClipboardCheck className="h-6 w-6 text-primary" />
-                    <CardTitle className="font-headline">Total Textures à Préparer ({focusedMealText})</CardTitle>
-                </div>
-                <form onSubmit={onFileUpload} className="flex items-center gap-2">
-                    <Input
-                      ref={fileInputRef} type="file" name="menuFile" accept=".xlsx, .xls"
-                      className="font-body text-sm file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
-                    />
-                    <Button type="submit" size="sm" className="font-body"><Upload className="mr-2 h-4 w-4" /> Importer Planning Semaine</Button>
-                </form>
-            </div>
-             <CardDescription className="font-body mt-2">
-                Ce récapitulatif des textures est basé sur les résidents marqués comme présents pour le {focusedMealText.toLowerCase()}.
-                {importedFileName ? (
-                    isDisplayingImportedMenuForFocusedMeal ? (
-                    <> Le menu du jour ({focusedMealText.toLowerCase()}) est fourni par votre fichier Excel importé : <strong>{importedFileName}</strong>.</>
-                    ) : (
-                    (() => {
-                        if (!importedWeeklyPlan) { 
-                        return <> Aucun planning Excel n'est actuellement chargé. Affichage basé sur le menu par défaut pour le {focusedMealText.toLowerCase()}.</>;
-                        }
-                        const todayPlan = importedWeeklyPlan.find(dayPlan => isToday(parseISO(dayPlan.date)));
-                        if (todayPlan) {
-                            const mealData = currentMealFocus === 'lunch' ? todayPlan.meals.lunch : todayPlan.meals.dinner;
-                            if (mealData.starter || mealData.main || mealData.dessert) {
-                                return <> Le menu du jour ({focusedMealText.toLowerCase()}) est fourni par votre fichier Excel importé : <strong>{importedFileName}</strong>.</>;
-                            } else {
-                                return <> Le planning Excel (<strong>{importedFileName}</strong>) est chargé, mais il ne contient pas de plats spécifiés pour le {focusedMealText.toLowerCase()} d'aujourd'hui. Vérifiez les colonnes 'TypeRepas' et 'RolePlat' pour cette date et ce type de repas. Affichage basé sur le menu par défaut.</>;
-                            }
-                        } else { 
-                            return <> Le planning Excel (<strong>{importedFileName}</strong>) est chargé, mais aucun menu n'y est défini pour la date d'aujourd'hui. Affichage basé sur le menu par défaut.</>;
-                        }
-                    })()
-                    )
-                ) : (
-                    <> Aucun planning Excel n'a été importé. Un fichier Excel peut contenir les menus du déjeuner et du dîner. En attendant, l'affichage est basé sur le menu par défaut pour le {focusedMealText.toLowerCase()}.</>
-                )}
-                {importedFileName && <Button variant="link" size="sm" className="p-0 h-auto text-xs ml-1" onClick={clearImportedPlan}>Effacer le planning importé</Button>}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {isLoadingResidents ? (
-                <div className="flex justify-center items-center py-10">
-                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                    <p className="ml-2 font-body text-muted-foreground">Chargement des données de préparation...</p>
-                </div>
-            ) : presentForFocusedMealCount > 0 ? (
-                <>
-                    {ALL_PREPARATION_TYPES.map(prepType => {
-                        const count = globalTextureCountsForFocusedMeal[prepType];
-                        if (count === 0) return null; 
-
-                        return (
-                            <div key={prepType} className="py-3 px-4 rounded-lg border mb-3 bg-background shadow-sm last:mb-0">
-                                <div className="flex items-center justify-between mb-2">
-                                    <p className="font-body text-lg font-semibold text-primary">{prepType}</p>
-                                    <Badge variant="default" className="text-md px-3 py-1">{count}</Badge>
-                                </div>
-                                {mealsForFocusedMeal.length > 0 ? (
-                                    <div>
-                                        <h4 className="text-sm font-body font-medium text-muted-foreground mb-1">Plats du menu ({focusedMealText.toLowerCase()}) concernés :</h4>
-                                        <ul className="list-disc list-inside text-sm font-body space-y-0.5 ml-4">
-                                            {mealsForFocusedMeal.map(meal => (
-                                                <li key={`${prepType}-${meal.id}`}>
-                                                    {meal.name}
-                                                    <span className="text-xs text-muted-foreground ml-1">({meal.category})</span>
-                                                </li>
-                                            ))}
-                                        </ul>
-                                    </div>
-                                ) : (
-                                    <p className="text-sm font-body text-muted-foreground italic">Menu du {focusedMealText.toLowerCase()} non spécifié (utilisation du menu par défaut).</p>
-                                )}
-                            </div>
-                        );
-                    })}
-                    {Object.values(globalTextureCountsForFocusedMeal).every(c => c === 0) && (
-                         <p className="text-muted-foreground font-body text-center py-4">Aucune texture spécifique n'est requise pour les résidents présents, ou les données de texture sont manquantes.</p>
-                    )}
-                </>
-            ) : (
-                 <p className="text-muted-foreground font-body text-center py-4">Aucun résident présent au {focusedMealText.toLowerCase()} pour calculer les textures.</p>
-            )}
-          </CardContent>
-        </Card>
-
         <div className="grid gap-6 md:grid-cols-2">
           <Card>
             <CardHeader>
-              <CardTitle className="font-headline">Aperçu des Présences (Déjeuner)</CardTitle>
-              <CardDescription className="font-body">Liste des résidents et leur statut pour le déjeuner du jour.</CardDescription>
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-2">
+                      <ClipboardCheck className="h-6 w-6 text-primary" />
+                      <CardTitle className="font-headline">Total Textures à Préparer ({focusedMealText})</CardTitle>
+                  </div>
+                  <form onSubmit={onFileUpload} className="flex items-center gap-2">
+                      <Input
+                        ref={fileInputRef} type="file" name="menuFile" accept=".xlsx, .xls"
+                        className="font-body text-sm file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
+                      />
+                      <Button type="submit" size="sm" className="font-body"><Upload className="mr-2 h-4 w-4" /> Importer Planning Semaine</Button>
+                  </form>
+              </div>
+              <CardDescription className="font-body mt-2">
+                  Ce récapitulatif des textures est basé sur les résidents marqués comme présents pour le {focusedMealText.toLowerCase()}.
+                  {importedFileName ? (
+                      isDisplayingImportedMenuForFocusedMeal ? (
+                      <> Le menu du jour ({focusedMealText.toLowerCase()}) est fourni par votre fichier Excel importé : <strong>{importedFileName}</strong>.</>
+                      ) : (
+                      (() => {
+                          if (!importedWeeklyPlan) { 
+                          return <> Aucun planning Excel n'est actuellement chargé. Affichage basé sur le menu par défaut pour le {focusedMealText.toLowerCase()}. Un fichier Excel peut contenir les menus du déjeuner et du dîner.</>;
+                          }
+                          const todayPlan = importedWeeklyPlan.find(dayPlan => isToday(parseISO(dayPlan.date)));
+                          if (todayPlan) {
+                              const mealData = currentMealFocus === 'lunch' ? todayPlan.meals.lunch : todayPlan.meals.dinner;
+                              if (mealData.starter || mealData.main || mealData.dessert) {
+                                  return <> Le menu du jour ({focusedMealText.toLowerCase()}) est fourni par votre fichier Excel importé : <strong>{importedFileName}</strong>.</>;
+                              } else {
+                                  return <> Le planning Excel (<strong>{importedFileName}</strong>) est chargé, mais il ne contient pas de plats spécifiés pour le {focusedMealText.toLowerCase()} d'aujourd'hui. Vérifiez les colonnes 'TypeRepas' et 'RolePlat' pour cette date et ce type de repas. Affichage basé sur le menu par défaut.</>;
+                              }
+                          } else { 
+                              return <> Le planning Excel (<strong>{importedFileName}</strong>) est chargé, mais aucun menu n'y est défini pour la date d'aujourd'hui. Affichage basé sur le menu par défaut.</>;
+                          }
+                      })()
+                      )
+                  ) : (
+                       <> Aucun planning Excel n'a été importé. Un fichier Excel peut contenir les menus du déjeuner et du dîner. En attendant, l'affichage est basé sur le menu par défaut pour le {focusedMealText.toLowerCase()}.</>
+                  )}
+                  {importedFileName && <Button variant="link" size="sm" className="p-0 h-auto text-xs ml-1" onClick={clearImportedPlan}>Effacer le planning importé</Button>}
+              </CardDescription>
             </CardHeader>
             <CardContent>
-            {isLoadingResidents ? (
-                <div className="flex justify-center items-center py-10"> <Loader2 className="h-6 w-6 animate-spin text-primary" /> <p className="ml-2 font-body text-muted-foreground">Chargement...</p></div>
-            ) : activeResidents.length === 0 ? (
-                <p className="text-muted-foreground font-body text-center py-4">Aucun résident actif trouvé.</p>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="font-headline">Résident</TableHead>
-                    <TableHead className="font-headline">Unité</TableHead>
-                    <TableHead className="font-headline">Statut Déjeuner</TableHead>
-                    <TableHead className="font-headline">Notes</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {activeResidents.slice(0,4).map(resident => (
-                      <TableRow key={resident.id} className="font-body">
-                        <TableCell className="flex items-center gap-2">
-                           <Image src={resident?.avatarUrl || "https://placehold.co/32x32.png"} alt={resident?.firstName || ""} width={24} height={24} className="rounded-full" data-ai-hint="person avatar" />
-                          {resident ? `${resident.firstName} ${resident.lastName}` : 'N/A'}
-                        </TableCell>
-                        <TableCell>{resident?.unit || 'N/A'}</TableCell>
-                        <TableCell>
-                          {getAttendanceStatusBadgeForLunchList(resident.id, resident.isActive)}
-                        </TableCell>
-                        <TableCell>{getAttendanceNotesForLunchList(resident.id)}</TableCell>
-                      </TableRow>
-                    ))}
-                </TableBody>
-              </Table>
-            )}
-              <div className="mt-4">
-                <Link href="/attendance"><Button variant="outline" className="w-full font-body">Gérer les Présences</Button></Link>
-              </div>
+              {isLoadingResidents ? (
+                  <div className="flex justify-center items-center py-10">
+                      <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                      <p className="ml-2 font-body text-muted-foreground">Chargement des données de préparation...</p>
+                  </div>
+              ) : presentForFocusedMealCount > 0 ? (
+                  <>
+                      {ALL_PREPARATION_TYPES.map(prepType => {
+                          const count = globalTextureCountsForFocusedMeal[prepType];
+                          if (count === 0) return null; 
+
+                          return (
+                              <div key={prepType} className="py-3 px-4 rounded-lg border mb-3 bg-background shadow-sm last:mb-0">
+                                  <div className="flex items-center justify-between mb-2">
+                                      <p className="font-body text-lg font-semibold text-primary">{prepType}</p>
+                                      <Badge variant="default" className="text-md px-3 py-1">{count}</Badge>
+                                  </div>
+                                  {mealsForFocusedMeal.length > 0 ? (
+                                      <div>
+                                          <h4 className="text-sm font-body font-medium text-muted-foreground mb-1">Plats du menu ({focusedMealText.toLowerCase()}) concernés :</h4>
+                                          <ul className="list-disc list-inside text-sm font-body space-y-0.5 ml-4">
+                                              {mealsForFocusedMeal.map(meal => (
+                                                  <li key={`${prepType}-${meal.id}`}>
+                                                      {meal.name}
+                                                      <span className="text-xs text-muted-foreground ml-1">({meal.category})</span>
+                                                  </li>
+                                              ))}
+                                          </ul>
+                                      </div>
+                                  ) : (
+                                      <p className="text-sm font-body text-muted-foreground italic">Menu du {focusedMealText.toLowerCase()} non spécifié (utilisation du menu par défaut).</p>
+                                  )}
+                              </div>
+                          );
+                      })}
+                      {Object.values(globalTextureCountsForFocusedMeal).every(c => c === 0) && (
+                           <p className="text-muted-foreground font-body text-center py-4">Aucune texture spécifique n'est requise pour les résidents présents, ou les données de texture sont manquantes.</p>
+                      )}
+                  </>
+              ) : (
+                   <p className="text-muted-foreground font-body text-center py-4">Aucun résident présent au {focusedMealText.toLowerCase()} pour calculer les textures.</p>
+              )}
             </CardContent>
           </Card>
 
@@ -573,4 +502,3 @@ export default function DashboardPage() {
     </AppLayout>
   );
 }
-
