@@ -120,7 +120,7 @@ export default function DashboardPage() {
     });
     return () => unsubscribe();
 
-  }, [currentAttendanceKey]); // todayISO as a key for localStorage, so if it changes, refetch
+  }, [currentAttendanceKey]); 
 
   const activeResidents = useMemo(() => allResidents.filter(r => r.isActive), [allResidents]);
 
@@ -599,3 +599,5 @@ export default function DashboardPage() {
     </AppLayout>
   );
 }
+
+    
