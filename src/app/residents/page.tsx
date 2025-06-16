@@ -13,7 +13,7 @@ import { PlusCircle, MoreHorizontal, FilePenLine, UserX, UserCheck, MinusSquare,
 import Image from 'next/image';
 import Link from 'next/link';
 import { onResidentsUpdate } from '@/lib/firebase/firestoreClientService'; 
-import { mockAttendance } from '@/app/page'; // Import mockAttendance from dashboard page
+import { mockAttendanceFallback } from '@/app/page'; // Import mockAttendanceFallback from dashboard page
 // todayISO est nécessaire pour filtrer les présences du jour
 const todayISO = new Date().toISOString().split('T')[0];
 
@@ -40,8 +40,8 @@ export default function ResidentsPage() {
       return <Badge variant="outline" className="bg-gray-100 text-gray-600"><UserX className="mr-1 h-4 w-4" />Inactif</Badge>;
     }
 
-    // Utilise mockAttendance pour le statut du déjeuner, comme précédemment
-    const attendanceRecord = mockAttendance.find(
+    // Utilise mockAttendanceFallback pour le statut du déjeuner
+    const attendanceRecord = mockAttendanceFallback.find(
       (att: AttendanceRecord) => att.residentId === residentId && att.date === todayISO && att.mealType === 'lunch'
     );
 
@@ -53,7 +53,7 @@ export default function ResidentsPage() {
           return <Badge variant="destructive" className="bg-red-100 text-red-700"><UserX className="mr-1 h-4 w-4" />Absent(e)</Badge>;
         case 'external':
           return <Badge variant="secondary" className="bg-yellow-100 text-yellow-700"><MinusSquare className="mr-1 h-4 w-4" />Extérieur</Badge>;
-        default: // Should not happen with current types
+        default: 
           return <Badge variant="outline"><HelpCircle className="mr-1 h-4 w-4" />Non Renseigné</Badge>;
       }
     }

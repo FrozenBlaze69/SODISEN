@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import type { Notification, Resident, AttendanceRecord, Meal, WeeklyDayPlan, PlannedMealItem } from '@/types';
+import type { Notification, Resident, AttendanceRecord, Meal, WeeklyDayPlan, PlannedMealItem, MealType } from '@/types';
 import { AlertTriangle, CheckCircle2, Info, Users, UtensilsCrossed, BellRing, ClipboardCheck, Upload, Plus, Minus, Building, CheckSquare, XSquare, MinusSquare, HelpCircle, UserX, Loader2 } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -15,21 +15,19 @@ import { Input } from '@/components/ui/input';
 import { useToast } from "@/hooks/use-toast";
 import { handleMenuUpload } from './actions';
 import { format, parseISO, isToday } from 'date-fns';
-import { onResidentsUpdate } from '@/lib/firebase/firestoreClientService'; // Import Firestore listener
+import { onResidentsUpdate } from '@/lib/firebase/firestoreClientService';
 
 
 export const todayISO = new Date().toISOString().split('T')[0]; 
+const LOCAL_STORAGE_ATTENDANCE_KEY_PREFIX = 'simulatedDailyAttendance_';
 
-// mockAttendance reste pour simuler les événements de présence du jour
-export const mockAttendance: AttendanceRecord[] = [
-  { id: 'att1', residentId: '1', date: todayISO, mealType: 'lunch', status: 'present', mealLocation: 'dining_hall' },
-  { id: 'att2', residentId: '2', date: todayISO, mealType: 'lunch', status: 'present', mealLocation: 'room' },
-  { id: 'att3', residentId: '3', date: todayISO, mealType: 'lunch', status: 'present', mealLocation: 'dining_hall' },
-  { id: 'att4', residentId: '4', date: todayISO, mealType: 'lunch', status: 'present', mealLocation: 'dining_hall' },
-  { id: 'att5', residentId: '5', date: todayISO, mealType: 'lunch', status: 'present', mealLocation: 'room' },
-  { id: 'att6', residentId: '6', date: todayISO, mealType: 'lunch', status: 'absent', notes: 'Rendez-vous coiffeur', mealLocation: 'not_applicable' },
-  // Note: Les IDs ici (1, 2, 3...) devront correspondre aux IDs des résidents DANS FIRESTORE pour que le matching fonctionne.
-  // Si vos résidents Firestore ont des IDs auto-générés (ex: "xyz123"), mettez à jour ces IDs dans mockAttendance.
+// Fallback mock attendance if localStorage is empty.
+// These IDs should ideally be IDs of some of your actual residents from Firestore for meaningful fallback.
+export const mockAttendanceFallback: AttendanceRecord[] = [
+  // Replace 'residentId1_from_firestore', etc. with actual resident IDs if you want specific fallbacks
+  { id: 'att_fb_1_lunch', residentId: 'residentId1_from_firestore', date: todayISO, mealType: 'lunch', status: 'present', mealLocation: 'dining_hall' },
+  { id: 'att_fb_2_lunch', residentId: 'residentId2_from_firestore', date: todayISO, mealType: 'lunch', status: 'present', mealLocation: 'room' },
+  { id: 'att_fb_3_lunch', residentId: 'residentId3_from_firestore', date: todayISO, mealType: 'lunch', status: 'absent', notes: 'Rendez-vous coiffeur', mealLocation: 'not_applicable' },
 ];
 
 
@@ -83,6 +81,9 @@ export default function DashboardPage() {
   const [importedWeeklyPlan, setImportedWeeklyPlan] = useState<WeeklyDayPlan[] | null>(null);
   const [importedFileName, setImportedFileName] = useState<string | null>(null);
   const [clientSideRendered, setClientSideRendered] = useState(false);
+  const [dailyAttendanceRecords, setDailyAttendanceRecords] = useState<AttendanceRecord[]>([]);
+
+  const currentAttendanceKey = `${LOCAL_STORAGE_ATTENDANCE_KEY_PREFIX}${todayISO}`;
 
   useEffect(() => {
     setClientSideRendered(true);
@@ -100,15 +101,26 @@ export default function DashboardPage() {
       }
     }
 
-    // Fetch residents from Firestore
+    try {
+      const storedAttendance = localStorage.getItem(currentAttendanceKey);
+      if (storedAttendance) {
+        setDailyAttendanceRecords(JSON.parse(storedAttendance) as AttendanceRecord[]);
+      } else {
+        setDailyAttendanceRecords(mockAttendanceFallback); // Fallback if nothing in localStorage
+      }
+    } catch (e) {
+      console.error("Error reading daily attendance from localStorage for dashboard", e);
+      setDailyAttendanceRecords(mockAttendanceFallback); // Fallback on error
+    }
+
     setIsLoadingResidents(true);
     const unsubscribe = onResidentsUpdate((updatedResidents) => {
       setAllResidents(updatedResidents);
       setIsLoadingResidents(false);
     });
-    return () => unsubscribe(); // Cleanup subscription on unmount
+    return () => unsubscribe();
 
-  }, []);
+  }, [currentAttendanceKey]); // todayISO as a key for localStorage, so if it changes, refetch
 
   const activeResidents = useMemo(() => allResidents.filter(r => r.isActive), [allResidents]);
 
@@ -127,13 +139,13 @@ export default function DashboardPage() {
   }, [importedWeeklyPlan]);
   
   const presentResidentAttendances = useMemo(() => {
-    return mockAttendance.filter(a => 
+    return dailyAttendanceRecords.filter(a => 
       a.mealType === 'lunch' && 
       a.status === 'present' && 
       a.date === todayISO &&
       activeResidents.some(ar => ar.id === a.residentId) 
     );
-  }, [activeResidents]);
+  }, [activeResidents, dailyAttendanceRecords]);
 
   const residentsByUnit = useMemo(() => {
     return activeResidents.reduce((acc, resident) => {
@@ -189,7 +201,7 @@ export default function DashboardPage() {
      if (!isActive) {
       return <Badge variant="outline" className="bg-gray-100 text-gray-600"><UserX className="mr-1 h-4 w-4" />Inactif</Badge>;
     }
-    const attendanceRecord = mockAttendance.find(
+    const attendanceRecord = dailyAttendanceRecords.find(
       (att) => att.residentId === residentId && att.date === todayISO && att.mealType === 'lunch'
     );
 
@@ -207,7 +219,7 @@ export default function DashboardPage() {
   };
   
   const getAttendanceNotes = (residentId: string): string => {
-    const attendanceRecord = mockAttendance.find(
+    const attendanceRecord = dailyAttendanceRecords.find(
       (att) => att.residentId === residentId && att.date === todayISO && att.mealType === 'lunch'
     );
     return attendanceRecord?.notes || '-';
@@ -351,7 +363,7 @@ export default function DashboardPage() {
   }
 
 
-  if (isLoadingResidents && !clientSideRendered) { // Show full page loader only on initial server render or if client hasn't hydrated
+  if (isLoadingResidents && !clientSideRendered) { 
     return (
       <AppLayout>
         <div className="flex h-[calc(100vh-var(--header-height)-2rem)] items-center justify-center">
