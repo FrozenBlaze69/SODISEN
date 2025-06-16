@@ -64,12 +64,12 @@ export interface Notification {
   relatedResidentId?: string;
 }
 
-export type UserRole = 'chef_gerant' | 'cuisinier' | 'soignant' | 'famille_invite';
+export type UserRole = 'chef_gerant' | 'cuisinier' | 'soignant' | 'famille_invite' | null;
 
 export interface User {
-  id: string;
-  name: string;
-  email: string;
+  id: string; // Pourrait être le PIN dans cette simulation, ou un ID généré
+  name: string; // Nom associé au rôle, ex: "Chef Gérant"
+  email?: string; // Optionnel pour un système basé sur PIN
   role: UserRole;
   avatarUrl?: string;
 }
@@ -146,4 +146,12 @@ export interface MenuSuggestionOutput {
   suggestedDishName: string;
   description: string;
   reasoning?: string; // Why this dish fits the criteria
+}
+
+// Pour le contexte d'authentification
+export interface AuthContextType {
+  currentUser: User | null;
+  login: (pin: string) => Promise<boolean>;
+  logout: () => void;
+  isLoading: boolean;
 }

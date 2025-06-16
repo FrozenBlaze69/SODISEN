@@ -1,4 +1,9 @@
+
+'use client';
+
 import type { ReactNode } from 'react';
+import { useEffect } from 'react';
+import { useRouter, usePathname } from 'next/navigation';
 import {
   SidebarProvider,
   Sidebar,
@@ -11,13 +16,43 @@ import {
 import { Header } from './header';
 import { SidebarNav } from './sidebar-nav';
 import { Button } from '@/components/ui/button';
-import { Package2 } from 'lucide-react'; // Placeholder for App Logo/Icon
+import { Package2, Loader2 } from 'lucide-react'; // Placeholder for App Logo/Icon
+import { useAuth } from '@/hooks/useAuth';
 
 interface AppLayoutProps {
   children: ReactNode;
 }
 
 export function AppLayout({ children }: AppLayoutProps) {
+  const { currentUser, isLoading } = useAuth();
+  const router = useRouter();
+  const pathname = usePathname();
+
+  useEffect(() => {
+    if (!isLoading && !currentUser && pathname !== '/login') {
+      router.replace('/login');
+    }
+  }, [currentUser, isLoading, router, pathname]);
+
+  if (isLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-background">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!currentUser && pathname !== '/login') {
+    // This case should ideally be caught by the useEffect,
+    // but as a fallback or for initial render before effect runs.
+    return null; // Or a minimal loading/redirecting screen
+  }
+  
+  // If we are on the login page, and the user is somehow already loaded, redirect to dashboard
+  // This is less likely due to the top-level check but good for robustness
+  // However, AppLayout should not be used for the login page itself.
+  // The login page will have its own simple layout.
+
   return (
     <SidebarProvider defaultOpen>
       <Sidebar variant="sidebar" collapsible="icon" side="left">
@@ -35,7 +70,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         </SidebarContent>
         <SidebarFooter className="p-4">
           {/* Footer content if any, e.g., version number */}
-          <p className="text-xs text-sidebar-foreground/70 font-body">&copy; 2024 Sodexo</p>
+          <p className="text-xs text-sidebar-foreground/70 font-body">&copy; {new Date().getFullYear()} Sodexo</p>
         </SidebarFooter>
       </Sidebar>
       <SidebarInset>
