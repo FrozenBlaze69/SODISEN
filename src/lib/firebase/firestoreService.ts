@@ -6,26 +6,44 @@
 // RÔLE BACKEND : Ce fichier agit comme votre backend pour les opérations sur les résidents.
 // Il communique directement avec Firebase Firestore pour lire et écrire des données.
 
-// AVANT QUE CE CODE NE FONCTIONNE, ASSUREZ-VOUS D'AVOIR :
-// 1. CONFIGURÉ CORRECTEMENT VOS CLÉS FIREBASE dans `src/lib/firebase/config.ts`.
-// 2. ACTIVÉ FIRESTORE DATABASE dans votre projet Firebase sur la console.
-// 3. CONFIGURÉ LES RÈGLES DE SÉCURITÉ FIRESTORE pour autoriser les écritures et lectures
-//    sur la collection 'residents'. Pour le développement, des règles comme
-//    `allow read, write: if true;` pour la collection peuvent être utilisées temporairement.
-//    Exemple de règles pour commencer (À PLACER DANS LA CONSOLE FIREBASE -> FIRESTORE -> RÈGLES):
+// #####################################################################################
+// # IMPORTANT : POUR QUE CE CODE FONCTIONNE (AJOUT/MODIFICATION/SUPPRESSION DE DONNÉES) #
+// #####################################################################################
+//
+// 1. CONFIGURATION FIREBASE DANS `src/lib/firebase/config.ts` :
+//    Assurez-vous que les clés (apiKey, projectId, etc.) sont CORRECTEMENT remplies
+//    avec les informations de VOTRE projet Firebase.
+//
+// 2. FIRESTORE DATABASE ACTIVÉE :
+//    Dans votre console Firebase, la base de données Firestore doit être créée et activée
+//    (choisissez le mode Natif).
+//
+// 3. RÈGLES DE SÉCURITÉ FIRESTORE (CAUSE PRINCIPALE DE L'ERREUR "PERMISSION_DENIED") :
+//    Vous DEVEZ configurer les règles de sécurité dans la console Firebase pour autoriser
+//    les écritures sur la collection `residents`.
+//    Pour le DÉVELOPPEMENT, utilisez ces règles dans Firebase Console > Firestore > Règles :
 //    ----------------------------------------------------------------------------------
 //    rules_version = '2';
 //    service cloud.firestore {
 //      match /databases/{database}/documents {
 //        match /residents/{residentId} {
-//          // Pour le développement, pour permettre aux Server Actions d'écrire sans authentification Firebase complète :
+//          // AUTORISE TOUTE LECTURE ET ÉCRITURE POUR LE DÉVELOPPEMENT
+//          // ATTENTION : NON SÉCURISÉ POUR LA PRODUCTION !
 //          allow read, write: if true;
-//          // Pour la production, vous devriez utiliser quelque chose comme :
-//          // allow read, write: if request.auth != null; // (si vous utilisez Firebase Auth)
 //        }
+//        // Ajoutez ici des règles pour d'autres collections si nécessaire
 //      }
 //    }
 //    ----------------------------------------------------------------------------------
+//    SANS CES RÈGLES (ou des règles équivalentes permettant l'écriture), VOUS OBTIENDREZ
+//    DES ERREURS "PERMISSION_DENIED" LORS DE L'AJOUT DE RÉSIDENTS.
+//
+// 4. COLLECTION `residents` :
+//    Elle sera créée automatiquement dans Firestore lors du premier ajout réussi
+//    si elle n'existe pas déjà. Vous n'avez pas besoin de la créer manuellement
+//    dans la console Firebase au préalable.
+//
+// #####################################################################################
 
 import { db } from './config';
 import { collection, addDoc, updateDoc, doc, deleteDoc, serverTimestamp, setDoc } from "firebase/firestore";
@@ -39,11 +57,12 @@ export type ResidentFormData = Omit<Resident, 'id' | 'createdAt'>;
 /**
  * Ajoute un nouveau résident ou met à jour un résident existant dans Firestore.
  * La collection `RESIDENTS_COLLECTION` (par exemple, "residents") sera automatiquement
- * créée dans Firestore si elle n'existe pas lors du premier ajout réussi d'un document.
+ * créée dans Firestore si elle n'existe pas lors du premier ajout réussi d'un document,
+ * À CONDITION QUE LES RÈGLES DE SÉCURITÉ LE PERMETTENT.
  * @param residentData Les données du résident à sauvegarder.
  * @param residentId L'ID du résident à mettre à jour. Si non fourni, un nouveau résident sera créé.
  * @returns L'ID du résident ajouté ou mis à jour.
- * @throws Error si la sauvegarde échoue.
+ * @throws Error si la sauvegarde échoue (par exemple, à cause des règles de sécurité Firestore).
  */
 export async function addOrUpdateResident(residentData: ResidentFormData, residentId?: string): Promise<string> {
   try {
@@ -81,11 +100,13 @@ export async function addOrUpdateResident(residentData: ResidentFormData, reside
     let errorMessage = "Could not save resident due to an unknown server error.";
     if (e instanceof Error) {
       // e.message contient souvent des informations utiles de Firebase (ex: "Missing or insufficient permissions.")
-      errorMessage = `Could not save resident: ${e.message}`;
+      errorMessage = `Impossible d'ajouter le résident. ${e.message}`;
     } else if (typeof e === 'string') {
-      errorMessage = `Could not save resident: ${e}`;
+      errorMessage = `Impossible d'ajouter le résident: ${e}`;
+    } else if (e && typeof e === 'object' && 'message' in e && typeof e.message === 'string') {
+      errorMessage = `Impossible d'ajouter le résident. ${e.message}`;
     } else if (e && typeof e === 'object' && 'toString' in e) {
-      errorMessage = `Could not save resident: ${e.toString()}`;
+      errorMessage = `Impossible d'ajouter le résident: ${e.toString()}`;
     }
     // Renvoyer l'erreur pour qu'elle puisse être attrapée par le client (et affichée dans le toast)
     throw new Error(errorMessage);
@@ -101,11 +122,13 @@ export async function deleteResidentFromFirestore(residentId: string): Promise<v
         console.error("Error deleting document from Firestore: ", e);
         let errorMessage = "Could not delete resident due to an unknown server error.";
         if (e instanceof Error) {
-            errorMessage = `Could not delete resident: ${e.message}`;
+            errorMessage = `Impossible de supprimer le résident: ${e.message}`;
         } else if (typeof e === 'string') {
-            errorMessage = `Could not delete resident: ${e}`;
+            errorMessage = `Impossible de supprimer le résident: ${e}`;
+        } else if (e && typeof e === 'object' && 'message' in e && typeof e.message === 'string') {
+            errorMessage = `Impossible de supprimer le résident. ${e.message}`;
         } else if (e && typeof e === 'object' && 'toString' in e) {
-            errorMessage = `Could not delete resident: ${e.toString()}`;
+            errorMessage = `Impossible de supprimer le résident: ${e.toString()}`;
         }
         throw new Error(errorMessage);
     }
@@ -115,7 +138,7 @@ export async function deleteResidentFromFirestore(residentId: string): Promise<v
 // Si vous rencontrez des erreurs lors de l'ajout/modification/suppression :
 // 1. VÉRIFIEZ LA CONFIGURATION FIREBASE : src/lib/firebase/config.ts doit avoir les bonnes clés.
 // 2. VÉRIFIEZ LES RÈGLES DE SÉCURITÉ FIRESTORE : Dans la console Firebase, assurez-vous que les écritures
-//    sont autorisées pour la collection 'residents'.
+//    sont autorisées pour la collection 'residents' (voir commentaire en haut de ce fichier).
 // 3. CONSULTEZ LA CONSOLE DU NAVIGATEUR ET DU SERVEUR (TERMINAL NEXTJS) : Des messages d'erreur
 //    plus détaillés y apparaîtront.
     
