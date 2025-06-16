@@ -1,49 +1,58 @@
 
 'use client';
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { AppLayout } from '@/components/layout/app-layout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { Resident, AttendanceRecord, MealLocation } from '@/types';
-import { Save, Undo, ChevronLeft, ChevronRight, MapPin } from 'lucide-react';
+import { Save, Undo, ChevronLeft, ChevronRight, Loader2, Users } from 'lucide-react';
 import Image from 'next/image';
-
-// Mock Data
-const mockResidents: Resident[] = [
-  { id: '1', firstName: 'Jean', lastName: 'Dupont', roomNumber: '101A', diets: ['Sans sel'], allergies: ['Arachides'], medicalSpecificities: 'Diabète', isActive: true, avatarUrl: 'https://placehold.co/40x40.png', unit: "Unité A", contraindications: [], textures: [] },
-  { id: '2', firstName: 'Aline', lastName: 'Martin', roomNumber: '102B', diets: ['Mixé'], allergies: [], medicalSpecificities: 'AVC récent', isActive: true, avatarUrl: 'https://placehold.co/40x40.png', unit: "Unité B", contraindications: [], textures: [] },
-  { id: '3', firstName: 'Pierre', lastName: 'Durand', roomNumber: '205A', diets: ['Végétarien'], allergies: ['Gluten'], medicalSpecificities: '', isActive: true, avatarUrl: 'https://placehold.co/40x40.png', unit: "Unité A", contraindications: [], textures: [] },
-];
+import { onResidentsUpdate } from '@/lib/firebase/firestoreClientService';
 
 // Assume today's date for attendance
 const today = new Date().toISOString().split('T')[0];
 
+// Mock Attendance Data - This will be used to populate attendance for the real residents
 const mockAttendanceRecords: AttendanceRecord[] = [
+  // Assurez-vous que les residentId ici peuvent correspondre à des IDs de vos résidents Firestore
   { id: 'ar1', residentId: '1', date: today, mealType: 'breakfast', status: 'present', mealLocation: 'dining_hall' },
   { id: 'ar2', residentId: '1', date: today, mealType: 'lunch', status: 'present', mealLocation: 'dining_hall' },
   { id: 'ar3', residentId: '1', date: today, mealType: 'dinner', status: 'absent', notes: "Chez sa fille", mealLocation: 'not_applicable' },
   { id: 'ar4', residentId: '2', date: today, mealType: 'breakfast', status: 'present', mealLocation: 'room' },
   { id: 'ar5', residentId: '2', date: today, mealType: 'lunch', status: 'absent', notes: "Rdv médecin", mealLocation: 'not_applicable' },
   { id: 'ar6', residentId: '2', date: today, mealType: 'dinner', status: 'present', mealLocation: 'room' },
-  { id: 'ar7', residentId: '3', date: today, mealType: 'breakfast', status: 'present', mealLocation: 'dining_hall' },
-  { id: 'ar8', residentId: '3', date: today, mealType: 'lunch', status: 'present', mealLocation: 'dining_hall' },
-  { id: 'ar9', residentId: '3', date: today, mealType: 'dinner', status: 'present', mealLocation: 'dining_hall' },
+  // Ajoutez plus de données fictives si nécessaire, en essayant de faire correspondre les residentId
+  // avec ceux que vous avez dans Firestore (par exemple, si vous avez un résident avec l'ID 'firebaseResidentId1')
+  // { id: 'ar_firebase1_lunch', residentId: 'firebaseResidentId1', date: today, mealType: 'lunch', status: 'present', mealLocation: 'dining_hall' },
 ];
 
 
 export default function AttendancePage() {
+  const [residents, setResidents] = useState<Resident[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    setIsLoading(true);
+    const unsubscribe = onResidentsUpdate((updatedResidents) => {
+      setResidents(updatedResidents.filter(r => r.isActive)); // On ne charge que les résidents actifs
+      setIsLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
   const mealTypes: Array<AttendanceRecord['mealType']> = ['breakfast', 'lunch', 'dinner'];
 
-  const getResidentAttendanceValue = (residentId: string, mealType: AttendanceRecord['mealType'], field: keyof AttendanceRecord): AttendanceRecord[keyof AttendanceRecord] => {
+  const getResidentAttendanceValue = (residentId: string, mealType: AttendanceRecord['mealType'], field: keyof Omit<AttendanceRecord, 'id' | 'residentId' | 'date'>): AttendanceRecord[keyof AttendanceRecord] => {
     const record = mockAttendanceRecords.find(ar => ar.residentId === residentId && ar.mealType === mealType && ar.date === today);
     if (record) {
-        return record[field];
+        return record[field as keyof AttendanceRecord];
     }
+    // Default values if no record found
     if (field === 'status') return 'present';
     if (field === 'mealLocation') return 'dining_hall';
-    return '';
+    return ''; // For notes or other fields
   }
   
   const mealLocationLabel = (location?: MealLocation): string => {
@@ -92,6 +101,18 @@ export default function AttendancePage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
+            {isLoading ? (
+                <div className="flex justify-center items-center py-10">
+                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                    <p className="ml-2 font-body text-muted-foreground">Chargement des résidents...</p>
+                </div>
+            ) : residents.length === 0 ? (
+                <div className="text-center py-10 text-muted-foreground font-body">
+                    <Users className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+                    <p className="text-lg">Aucun résident actif trouvé.</p>
+                    <p className="text-sm">Veuillez ajouter des résidents actifs via la page "Gérer les Résidents".</p>
+                </div>
+            ) : (
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
@@ -111,7 +132,7 @@ export default function AttendancePage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {mockResidents.filter(r => r.isActive).map((resident) => (
+                  {residents.map((resident) => (
                     <TableRow key={resident.id} className="font-body">
                       <TableCell className="font-medium sticky left-0 bg-card z-10">
                         <div className="flex items-center gap-2">
@@ -162,6 +183,7 @@ export default function AttendancePage() {
                 </TableBody>
               </Table>
             </div>
+            )}
           </CardContent>
         </Card>
       </div>
