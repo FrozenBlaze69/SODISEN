@@ -444,15 +444,25 @@ export default function DashboardPage() {
                     <Button type="submit" size="sm" className="font-body"><Upload className="mr-2 h-4 w-4" /> Importer Planning Semaine</Button>
                 </form>
             </div>
-            <CardDescription className="font-body mt-2">
+             <CardDescription className="font-body mt-2">
               {importedFileName ? (
                 isDisplayingImportedMenuForToday ? (
-                  <>Planning hebdomadaire chargé depuis : <strong>{importedFileName}</strong>. Les repas du jour (ci-dessous) proviennent de ce planning. <Button variant="link" size="sm" className="p-0 h-auto text-xs" onClick={clearImportedPlan}>Effacer le planning importé</Button></>
+                  <>Planning hebdomadaire chargé depuis : <strong>{importedFileName}</strong>. Les repas du déjeuner (ci-dessous) proviennent de ce planning. <Button variant="link" size="sm" className="p-0 h-auto text-xs" onClick={clearImportedPlan}>Effacer le planning importé</Button></>
                 ) : (
-                  <>Planning hebdomadaire chargé depuis : <strong>{importedFileName}</strong>, mais aucun menu n'est défini pour aujourd'hui ou le menu du jour est vide. Affichage du menu par défaut ci-dessous. <Button variant="link" size="sm" className="p-0 h-auto text-xs" onClick={clearImportedPlan}>Effacer le planning importé</Button></>
+                  (() => {
+                    if (!importedWeeklyPlan) { 
+                       return <>Affichage du menu par défaut pour le déjeuner aujourd'hui. Importez un planning Excel pour la semaine.</>;
+                    }
+                    const todayPlan = importedWeeklyPlan.find(dayPlan => isToday(parseISO(dayPlan.date)));
+                    if (todayPlan) { 
+                        return <>Planning hebdomadaire chargé depuis : <strong>{importedFileName}</strong>. Un menu est défini pour aujourd'hui, mais il ne contient pas de plats pour le déjeuner ou les plats de déjeuner ne sont pas correctement spécifiés (vérifiez 'TypeRepas' et 'RolePlat' dans l'Excel). Affichage du menu par défaut pour le déjeuner. <Button variant="link" size="sm" className="p-0 h-auto text-xs" onClick={clearImportedPlan}>Effacer le planning importé</Button></>;
+                    } else { 
+                        return <>Planning hebdomadaire chargé depuis : <strong>{importedFileName}</strong>, mais aucun menu n'est défini pour aujourd'hui dans ce planning. Affichage du menu par défaut pour le déjeuner. <Button variant="link" size="sm" className="p-0 h-auto text-xs" onClick={clearImportedPlan}>Effacer le planning importé</Button></>;
+                    }
+                  })()
                 )
               ) : (
-                <>Affichage du menu par défaut pour aujourd'hui. Importez un planning Excel pour la semaine.</>
+                <>Affichage du menu par défaut pour le déjeuner aujourd'hui. Importez un planning Excel pour la semaine.</>
               )}
             </CardDescription>
           </CardHeader>
