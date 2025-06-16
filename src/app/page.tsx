@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import type { Notification, Resident, AttendanceRecord, Meal, WeeklyDayPlan, PlannedMealItem, MealType } from '@/types';
-import { Users, UtensilsCrossed, BellRing, ClipboardCheck, Upload, Loader2, Clock, AlertTriangle as IconAlertTriangle } from 'lucide-react';
+import { Users, UtensilsCrossed, BellRing, ClipboardCheck, Upload, Loader2, Clock, AlertTriangle as IconAlertTriangle, CheckCircle2, Info } from 'lucide-react';
 import Link from 'next/link';
 import { Input } from '@/components/ui/input';
 import { useToast } from "@/hooks/use-toast";
@@ -465,7 +465,7 @@ export default function DashboardPage() {
                     <> Les plats listés ci-dessous pour le {focusedMealText.toLowerCase()} proviennent de votre fichier Excel importé : <strong>{importedFileName}</strong>. Un fichier Excel peut contenir les menus du déjeuner et du dîner.</>
                   ) : ( 
                     (() => {
-                      const todayPlan = importedWeeklyPlan!.find(dayPlan => isToday(parseISO(dayPlan.date))); 
+                      const todayPlan = importedWeeklyPlan?.find(dayPlan => isToday(parseISO(dayPlan.date))); 
                       if (todayPlan) {
                         return <> Le planning Excel (<strong>{importedFileName}</strong>) est chargé. Cependant, il ne contient pas de plats spécifiés pour le {focusedMealText.toLowerCase()} d'aujourd'hui dans ce fichier (vérifiez 'TypeRepas' et 'RolePlat'). Les plats affichés ci-dessous sont donc les plats par défaut. Un fichier Excel peut contenir les menus du déjeuner et du dîner.</>;
                       } else {
@@ -558,4 +558,3 @@ export default function DashboardPage() {
     </AppLayout>
   );
 }
-
