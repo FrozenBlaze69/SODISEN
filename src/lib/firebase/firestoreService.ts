@@ -6,6 +6,27 @@
 // RÔLE BACKEND : Ce fichier agit comme votre backend pour les opérations sur les résidents.
 // Il communique directement avec Firebase Firestore pour lire et écrire des données.
 
+// AVANT QUE CE CODE NE FONCTIONNE, ASSUREZ-VOUS D'AVOIR :
+// 1. CONFIGURÉ CORRECTEMENT VOS CLÉS FIREBASE dans `src/lib/firebase/config.ts`.
+// 2. ACTIVÉ FIRESTORE DATABASE dans votre projet Firebase sur la console.
+// 3. CONFIGURÉ LES RÈGLES DE SÉCURITÉ FIRESTORE pour autoriser les écritures et lectures
+//    sur la collection 'residents'. Pour le développement, des règles comme
+//    `allow read, write: if true;` pour la collection peuvent être utilisées temporairement.
+//    Exemple de règles pour commencer (À PLACER DANS LA CONSOLE FIREBASE -> FIRESTORE -> RÈGLES):
+//    ----------------------------------------------------------------------------------
+//    rules_version = '2';
+//    service cloud.firestore {
+//      match /databases/{database}/documents {
+//        match /residents/{residentId} {
+//          // Pour le développement, pour permettre aux Server Actions d'écrire sans authentification Firebase complète :
+//          allow read, write: if true;
+//          // Pour la production, vous devriez utiliser quelque chose comme :
+//          // allow read, write: if request.auth != null; // (si vous utilisez Firebase Auth)
+//        }
+//      }
+//    }
+//    ----------------------------------------------------------------------------------
+
 import { db } from './config';
 import { collection, addDoc, updateDoc, doc, deleteDoc, serverTimestamp, setDoc } from "firebase/firestore";
 import { RESIDENTS_COLLECTION } from './constants';
@@ -85,7 +106,6 @@ export async function deleteResidentFromFirestore(residentId: string): Promise<v
 // Si vous rencontrez des erreurs lors de l'ajout/modification/suppression :
 // 1. VÉRIFIEZ LA CONFIGURATION FIREBASE : src/lib/firebase/config.ts doit avoir les bonnes clés.
 // 2. VÉRIFIEZ LES RÈGLES DE SÉCURITÉ FIRESTORE : Dans la console Firebase, assurez-vous que les écritures
-//    sont autorisées pour la collection 'residents'. Pour le dev, des règles ouvertes comme
-//    `allow read, write: if true;` peuvent être utilisées TEMPORAIREMENT.
+//    sont autorisées pour la collection 'residents'.
 // 3. CONSULTEZ LA CONSOLE DU NAVIGATEUR ET DU SERVEUR (TERMINAL NEXTJS) : Des messages d'erreur
 //    plus détaillés y apparaîtront.
