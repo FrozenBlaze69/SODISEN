@@ -41,6 +41,7 @@ export interface Menu {
 }
 
 export type AttendanceStatus = 'present' | 'absent' | 'external';
+export type MealLocation = 'dining_hall' | 'room' | 'not_applicable';
 
 export interface AttendanceRecord {
   id: string;
@@ -48,13 +49,14 @@ export interface AttendanceRecord {
   date: string; // YYYY-MM-DD
   mealType: MealType;
   status: AttendanceStatus;
+  mealLocation?: MealLocation;
   notes?: string;
 }
 
 export interface Notification {
   id:string;
   timestamp: string; // ISO date string
-  type: 'attendance' | 'absence' | 'outing' | 'allergy_alert' | 'emergency' | 'info' | 'attendance_reminder';
+  type: 'attendance' | 'absence' | 'outing' | 'allergy_alert' | 'emergency' | 'info' | 'attendance_reminder' | 'urgent_diet_request';
   title: string;
   message: string;
   isRead: boolean;
@@ -131,4 +133,17 @@ export interface MealReservationFormData {
   mealType: 'lunch' | 'dinner';
   numberOfGuests: number;
   comments?: string;
+}
+
+// Pour la suggestion de menu par IA
+export interface MenuSuggestionInput {
+  dietaryNeeds: string; // e.g., "Végétarien, sans gluten"
+  mealType: 'starter' | 'main' | 'dessert';
+  preferences?: string; // e.g., "aime les plats épicés, n'aime pas les champignons"
+}
+
+export interface MenuSuggestionOutput {
+  suggestedDishName: string;
+  description: string;
+  reasoning?: string; // Why this dish fits the criteria
 }

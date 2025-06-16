@@ -1,42 +1,56 @@
+
 import { AppLayout } from '@/components/layout/app-layout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import type { Resident, AttendanceRecord } from '@/types';
-import { Save, Undo, ChevronLeft, ChevronRight } from 'lucide-react';
+import type { Resident, AttendanceRecord, MealLocation } from '@/types';
+import { Save, Undo, ChevronLeft, ChevronRight, MapPin } from 'lucide-react';
 import Image from 'next/image';
 
 // Mock Data
 const mockResidents: Resident[] = [
-  { id: '1', firstName: 'Jean', lastName: 'Dupont', roomNumber: '101A', dietaryRestrictions: ['Sans sel'], allergies: ['Arachides'], medicalSpecificities: 'Diabète', isActive: true, avatarUrl: 'https://placehold.co/40x40.png' },
-  { id: '2', firstName: 'Aline', lastName: 'Martin', roomNumber: '102B', dietaryRestrictions: ['Mixé'], allergies: [], medicalSpecificities: 'AVC récent', isActive: true, avatarUrl: 'https://placehold.co/40x40.png' },
-  { id: '3', firstName: 'Pierre', lastName: 'Durand', roomNumber: '205A', dietaryRestrictions: ['Végétarien'], allergies: ['Gluten'], medicalSpecificities: '', isActive: true, avatarUrl: 'https://placehold.co/40x40.png' },
+  { id: '1', firstName: 'Jean', lastName: 'Dupont', roomNumber: '101A', diets: ['Sans sel'], allergies: ['Arachides'], medicalSpecificities: 'Diabète', isActive: true, avatarUrl: 'https://placehold.co/40x40.png', unit: "Unité A", contraindications: [], textures: [] },
+  { id: '2', firstName: 'Aline', lastName: 'Martin', roomNumber: '102B', diets: ['Mixé'], allergies: [], medicalSpecificities: 'AVC récent', isActive: true, avatarUrl: 'https://placehold.co/40x40.png', unit: "Unité B", contraindications: [], textures: [] },
+  { id: '3', firstName: 'Pierre', lastName: 'Durand', roomNumber: '205A', diets: ['Végétarien'], allergies: ['Gluten'], medicalSpecificities: '', isActive: true, avatarUrl: 'https://placehold.co/40x40.png', unit: "Unité A", contraindications: [], textures: [] },
 ];
 
 // Assume today's date for attendance
 const today = new Date().toISOString().split('T')[0];
 
 const mockAttendanceRecords: AttendanceRecord[] = [
-  { id: 'ar1', residentId: '1', date: today, mealType: 'breakfast', status: 'present' },
-  { id: 'ar2', residentId: '1', date: today, mealType: 'lunch', status: 'present' },
-  { id: 'ar3', residentId: '1', date: today, mealType: 'dinner', status: 'absent', notes: "Chez sa fille" },
-  { id: 'ar4', residentId: '2', date: today, mealType: 'breakfast', status: 'present' },
-  { id: 'ar5', residentId: '2', date: today, mealType: 'lunch', status: 'absent', notes: "Rdv médecin" },
-  { id: 'ar6', residentId: '2', date: today, mealType: 'dinner', status: 'present' },
-  { id: 'ar7', residentId: '3', date: today, mealType: 'breakfast', status: 'present' },
-  { id: 'ar8', residentId: '3', date: today, mealType: 'lunch', status: 'present' },
-  { id: 'ar9', residentId: '3', date: today, mealType: 'dinner', status: 'present' },
+  { id: 'ar1', residentId: '1', date: today, mealType: 'breakfast', status: 'present', mealLocation: 'dining_hall' },
+  { id: 'ar2', residentId: '1', date: today, mealType: 'lunch', status: 'present', mealLocation: 'dining_hall' },
+  { id: 'ar3', residentId: '1', date: today, mealType: 'dinner', status: 'absent', notes: "Chez sa fille", mealLocation: 'not_applicable' },
+  { id: 'ar4', residentId: '2', date: today, mealType: 'breakfast', status: 'present', mealLocation: 'room' },
+  { id: 'ar5', residentId: '2', date: today, mealType: 'lunch', status: 'absent', notes: "Rdv médecin", mealLocation: 'not_applicable' },
+  { id: 'ar6', residentId: '2', date: today, mealType: 'dinner', status: 'present', mealLocation: 'room' },
+  { id: 'ar7', residentId: '3', date: today, mealType: 'breakfast', status: 'present', mealLocation: 'dining_hall' },
+  { id: 'ar8', residentId: '3', date: today, mealType: 'lunch', status: 'present', mealLocation: 'dining_hall' },
+  { id: 'ar9', residentId: '3', date: today, mealType: 'dinner', status: 'present', mealLocation: 'dining_hall' },
 ];
 
 
 export default function AttendancePage() {
   const mealTypes: Array<AttendanceRecord['mealType']> = ['breakfast', 'lunch', 'dinner'];
 
-  const getResidentAttendanceForMeal = (residentId: string, mealType: AttendanceRecord['mealType']): AttendanceRecord['status'] => {
-    return mockAttendanceRecords.find(ar => ar.residentId === residentId && ar.mealType === mealType && ar.date === today)?.status || 'present';
+  const getResidentAttendanceValue = (residentId: string, mealType: AttendanceRecord['mealType'], field: keyof AttendanceRecord): AttendanceRecord[keyof AttendanceRecord] => {
+    const record = mockAttendanceRecords.find(ar => ar.residentId === residentId && ar.mealType === mealType && ar.date === today);
+    if (record) {
+        return record[field];
+    }
+    if (field === 'status') return 'present';
+    if (field === 'mealLocation') return 'dining_hall';
+    return '';
   }
+  
+  const mealLocationLabel = (location?: MealLocation): string => {
+    if (location === 'dining_hall') return 'Salle à manger';
+    if (location === 'room') return 'En chambre';
+    if (location === 'not_applicable') return 'N/A (absent/externe)';
+    return 'N/A';
+  }
+
 
   return (
     <AppLayout>
@@ -72,7 +86,7 @@ export default function AttendancePage() {
           <CardHeader>
             <CardTitle className="font-headline">Grille des Présences du {new Date(today).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}</CardTitle>
             <CardDescription className="font-body">
-              Cochez les cases pour marquer les présences/absences des résidents pour chaque repas.
+              Cochez les cases pour marquer les présences/absences des résidents pour chaque repas et leur lieu.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -80,13 +94,18 @@ export default function AttendancePage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="font-headline sticky left-0 bg-card z-10">Résident</TableHead>
+                    <TableHead className="font-headline sticky left-0 bg-card z-10 min-w-[200px]">Résident</TableHead>
                     {mealTypes.map(mealType => (
-                      <TableHead key={mealType} className="text-center font-headline">
-                        {mealType === 'breakfast' ? 'P. Déj.' : mealType === 'lunch' ? 'Déjeuner' : 'Dîner'}
-                      </TableHead>
+                      <React.Fragment key={mealType}>
+                        <TableHead className="text-center font-headline min-w-[140px]">
+                          {mealType === 'breakfast' ? 'P. Déj.' : mealType === 'lunch' ? 'Déjeuner' : 'Dîner'} (Statut)
+                        </TableHead>
+                        <TableHead className="text-center font-headline min-w-[150px]">
+                          Lieu
+                        </TableHead>
+                      </React.Fragment>
                     ))}
-                     <TableHead className="font-headline text-center">Notes (si absence/externe)</TableHead>
+                     <TableHead className="font-headline text-center min-w-[200px]">Notes (si absence/externe)</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -106,8 +125,9 @@ export default function AttendancePage() {
                         </div>
                       </TableCell>
                       {mealTypes.map(mealType => (
-                        <TableCell key={mealType} className="text-center">
-                          <Select defaultValue={getResidentAttendanceForMeal(resident.id, mealType)}>
+                        <React.Fragment key={`${resident.id}-${mealType}`}>
+                        <TableCell className="text-center">
+                          <Select defaultValue={getResidentAttendanceValue(resident.id, mealType, 'status') as AttendanceRecord['status']}>
                             <SelectTrigger className="w-[120px] mx-auto">
                               <SelectValue/>
                             </SelectTrigger>
@@ -118,9 +138,22 @@ export default function AttendancePage() {
                             </SelectContent>
                           </Select>
                         </TableCell>
+                         <TableCell className="text-center">
+                          <Select defaultValue={getResidentAttendanceValue(resident.id, mealType, 'mealLocation') as MealLocation || 'not_applicable'}>
+                            <SelectTrigger className="w-[140px] mx-auto">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="dining_hall">Salle à manger</SelectItem>
+                                <SelectItem value="room">En chambre</SelectItem>
+                                <SelectItem value="not_applicable">N/A (si absent/ext.)</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
+                        </React.Fragment>
                       ))}
                       <TableCell className="text-center">
-                         <input type="text" placeholder="Motif..." className="p-2 border rounded-md w-full text-sm" defaultValue={mockAttendanceRecords.find(ar => ar.residentId === resident.id && ar.status !== 'present' && ar.date === today)?.notes || ''}/>
+                         <input type="text" placeholder="Motif..." className="p-2 border rounded-md w-full text-sm" defaultValue={getResidentAttendanceValue(resident.id, 'dinner', 'notes') as string || ''}/>
                       </TableCell>
                     </TableRow>
                   ))}

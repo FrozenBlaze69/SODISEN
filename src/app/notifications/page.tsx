@@ -6,7 +6,7 @@ import { AppLayout } from '@/components/layout/app-layout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import type { Notification } from '@/types';
-import { AlertTriangle, CheckCircle2, Info, Bell, Trash2, Eye, Clock } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Info, Bell, Trash2, Eye, Clock, UtensilsCrossed } from 'lucide-react';
 
 // Fixed reference date for mock data
 const mockDateReference = new Date('2024-07-15T10:00:00.000Z');
@@ -18,6 +18,7 @@ const mockNotificationsInitial: Notification[] = [
   { id: '3', timestamp: new Date(mockDateReference.getTime() - 10800000).toISOString(), type: 'info', title: 'Présence Confirmée', message: 'Tous les résidents de l\'étage A sont présents pour le déjeuner.', isRead: true },
   { id: '4', timestamp: new Date(mockDateReference.getTime() - 86400000).toISOString(), type: 'allergy_alert', title: 'Alerte Allergie Cuisine', message: 'Attention: Jean Dupont est allergique aux arachides. Vérifiez la préparation du plat n°3.', isRead: false, relatedResidentId: '1'},
   { id: '7', timestamp: new Date(mockDateReference.getTime() - 1800000).toISOString(), type: 'attendance_reminder', title: 'Rappel Présence Manquante (Déjeuner)', message: 'La présence de Sophie Petit (Ch. 203C) pour le déjeuner doit être enregistrée.', isRead: false, relatedResidentId: '6'},
+  { id: '8', timestamp: new Date(mockDateReference.getTime() - 900000).toISOString(), type: 'urgent_diet_request', title: 'URGENCE: Régime Spécifique', message: 'Mme. Jeanne Moreau (Ch. 105B) nécessite un repas mixé lisse pour le déjeuner (indication médicale urgente).', isRead: false, relatedResidentId: 'mock-jm'},
   { id: '5', timestamp: new Date(mockDateReference.getTime() - 172800000).toISOString(), type: 'emergency', title: 'URGENCE MÉDICALE', message: 'Chute de Mme. Petit dans la chambre 203. Intervention infirmière en cours.', isRead: true, relatedResidentId: '6' },
   { id: '6', timestamp: new Date(mockDateReference.getTime() - 259200000).toISOString(), type: 'info', title: 'Menu de la semaine publié', message: 'Le menu de la semaine prochaine est disponible pour consultation.', isRead: true },
 ];
@@ -37,11 +38,13 @@ export default function NotificationsPage() {
       case 'allergy_alert':
       case 'emergency':
         return <AlertTriangle className="h-6 w-6 text-destructive" />;
+      case 'urgent_diet_request':
+        return <UtensilsCrossed className="h-6 w-6 text-orange-600" />;
       case 'absence':
       case 'outing':
         return <Info className="h-6 w-6 text-yellow-500" />;
       case 'attendance_reminder':
-        return <Clock className="h-6 w-6 text-orange-500" />;
+        return <Clock className="h-6 w-6 text-blue-500" />;
       case 'info':
       case 'attendance':
       default:

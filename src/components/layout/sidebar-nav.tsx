@@ -14,6 +14,7 @@ import {
   Package,
   Users, // Nouvelle icône pour Manage Residents
   BookMarked, // Nouvelle icône pour Réservations
+  Brain, // Nouvelle icône pour Suggestion IA Menu
 } from 'lucide-react';
 import {
   SidebarMenu,
@@ -41,6 +42,7 @@ const navItems: NavItem[] = [
   { href: '/reservations', label: 'Réservations', icon: BookMarked },
   { href: '/attendance', label: 'Présences', icon: ClipboardList },
   { href: '/notifications', label: 'Notifications', icon: Bell },
+  { href: '/ai-menu-suggestion', label: 'Suggestion IA Menu', icon: Brain },
   { href: '/settings', label: 'Paramètres', icon: Settings, 
     subItems: [
         { href: '/settings/profile', label: 'Profil', icon: Package },
