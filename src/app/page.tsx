@@ -20,6 +20,9 @@ import { onResidentsUpdate } from '@/lib/firebase/firestoreClientService';
 
 export const todayISO = new Date().toISOString().split('T')[0]; 
 const LOCAL_STORAGE_ATTENDANCE_KEY_PREFIX = 'simulatedDailyAttendance_';
+const SHARED_NOTIFICATIONS_KEY = 'sharedAppNotifications'; // Key for shared notifications
+const LOCAL_STORAGE_WEEKLY_PLAN_FILE_NAME_KEY = 'currentWeeklyPlanFileName';
+
 
 // Fallback mock attendance if localStorage is empty.
 export const mockAttendanceFallback: AttendanceRecord[] = [
@@ -38,10 +41,11 @@ const initialMockMealsTodayForDashboard: Meal[] = [
 
 const mockDateReference = new Date('2024-07-15T10:00:00.000Z');
 
-const mockNotifications: Notification[] = [
-  { id: '1', timestamp: new Date(mockDateReference.getTime() - 3600000).toISOString(), type: 'absence', title: 'Absence Imprévue', message: 'Sophie Petit ne prendra pas son repas ce midi (Coiffeur).', isRead: false, relatedResidentId: '6' },
-  { id: '2', timestamp: new Date(mockDateReference.getTime() - 7200000).toISOString(), type: 'info', title: 'Menu Spécial Anniversaire', message: 'Le dessert "Crème Caramel" est pour l\'anniversaire de Jean Dupont.', isRead: true },
-  { id: '3', timestamp: new Date(mockDateReference.getTime() - 10800000).toISOString(), type: 'allergy_alert', title: 'Allergie Arachides', message: 'Attention cuisine: Jean Dupont (Ch. 101A) est allergique aux arachides.', isRead: false, relatedResidentId: '1' },
+// Mock notifications for initial display if localStorage is empty
+const initialMockNotificationsForDashboard: Notification[] = [
+  { id: 'dash-mock-1', timestamp: new Date(mockDateReference.getTime() - 3600000).toISOString(), type: 'absence', title: 'Absence Imprévue (Exemple)', message: 'Sophie Petit ne prendra pas son repas ce midi (Coiffeur).', isRead: false, relatedResidentId: '6' },
+  { id: 'dash-mock-2', timestamp: new Date(mockDateReference.getTime() - 7200000).toISOString(), type: 'info', title: 'Menu Spécial Anniversaire (Exemple)', message: 'Le dessert "Crème Caramel" est pour l\'anniversaire de Jean Dupont.', isRead: true },
+  { id: 'dash-mock-3', timestamp: new Date(mockDateReference.getTime() - 10800000).toISOString(), type: 'allergy_alert', title: 'Allergie Arachides (Exemple)', message: 'Attention cuisine: Jean Dupont (Ch. 101A) est allergique aux arachides.', isRead: false, relatedResidentId: '1' },
 ];
 
 type PreparationType = 'Normal' | 'Mixé morceaux' | 'Mixé lisse' | 'Haché fin' | 'Haché gros';
@@ -79,6 +83,8 @@ export default function DashboardPage() {
   const [importedFileName, setImportedFileName] = useState<string | null>(null);
   const [clientSideRendered, setClientSideRendered] = useState(false);
   const [dailyAttendanceRecords, setDailyAttendanceRecords] = useState<AttendanceRecord[]>([]);
+  const [dashboardNotifications, setDashboardNotifications] = useState<Notification[]>(initialMockNotificationsForDashboard);
+
 
   const currentAttendanceKey = `${LOCAL_STORAGE_ATTENDANCE_KEY_PREFIX}${todayISO}`;
 
@@ -89,12 +95,12 @@ export default function DashboardPage() {
       try {
         const parsedPlan = JSON.parse(storedPlan);
         setImportedWeeklyPlan(parsedPlan);
-        const storedFileName = localStorage.getItem('currentWeeklyPlanFileName');
+        const storedFileName = localStorage.getItem(LOCAL_STORAGE_WEEKLY_PLAN_FILE_NAME_KEY);
         if(storedFileName) setImportedFileName(storedFileName);
       } catch (e) {
         console.error("Error parsing stored weekly plan:", e);
         localStorage.removeItem('currentWeeklyPlan');
-        localStorage.removeItem('currentWeeklyPlanFileName');
+        localStorage.removeItem(LOCAL_STORAGE_WEEKLY_PLAN_FILE_NAME_KEY);
       }
     }
 
@@ -109,6 +115,24 @@ export default function DashboardPage() {
       console.error("Error reading daily attendance from localStorage for dashboard", e);
       setDailyAttendanceRecords(mockAttendanceFallback); 
     }
+
+    try {
+        const storedNotificationsRaw = localStorage.getItem(SHARED_NOTIFICATIONS_KEY);
+        if (storedNotificationsRaw) {
+            const loadedNotifications: Notification[] = JSON.parse(storedNotificationsRaw);
+            if (loadedNotifications.length > 0) {
+                 setDashboardNotifications(loadedNotifications.sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
+            } else {
+                 setDashboardNotifications(initialMockNotificationsForDashboard.sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
+            }
+        } else {
+            setDashboardNotifications(initialMockNotificationsForDashboard.sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
+        }
+    } catch (error) {
+        console.error("Error loading notifications from localStorage for dashboard:", error);
+        setDashboardNotifications(initialMockNotificationsForDashboard.sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
+    }
+
 
     setIsLoadingResidents(true);
     const unsubscribe = onResidentsUpdate((updatedResidents) => {
@@ -188,6 +212,8 @@ export default function DashboardPage() {
         return <Info className="h-5 w-5 text-yellow-500" />;
       case 'urgent_diet_request':
         return <UtensilsCrossed className="h-5 w-5 text-orange-600" />;
+      case 'attendance':
+      case 'info':
       default:
         return <CheckCircle2 className="h-5 w-5 text-green-500" />;
     }
@@ -261,7 +287,8 @@ export default function DashboardPage() {
         setImportedWeeklyPlan(result.menuData as WeeklyDayPlan[]);
         setImportedFileName(result.fileName || null);
         localStorage.setItem('currentWeeklyPlan', JSON.stringify(result.menuData));
-        if(result.fileName) localStorage.setItem('currentWeeklyPlanFileName', result.fileName); else localStorage.removeItem('currentWeeklyPlanFileName');
+        if(result.fileName) localStorage.setItem(LOCAL_STORAGE_WEEKLY_PLAN_FILE_NAME_KEY, result.fileName); 
+        else localStorage.removeItem(LOCAL_STORAGE_WEEKLY_PLAN_FILE_NAME_KEY);
 
         if (fileInputRef.current) fileInputRef.current.value = "";
       } else {
@@ -277,9 +304,13 @@ export default function DashboardPage() {
     setImportedWeeklyPlan(null);
     setImportedFileName(null);
     localStorage.removeItem('currentWeeklyPlan');
-    localStorage.removeItem('currentWeeklyPlanFileName');
+    localStorage.removeItem(LOCAL_STORAGE_WEEKLY_PLAN_FILE_NAME_KEY);
     toast({title: "Planning importé effacé", description: "Affichage du menu par défaut."});
   }
+
+  const unreadNotificationsCount = useMemo(() => {
+    return dashboardNotifications.filter(n => !n.isRead).length;
+  }, [dashboardNotifications]);
 
 
   if (isLoadingResidents && !clientSideRendered) { 
@@ -331,7 +362,7 @@ export default function DashboardPage() {
               <BellRing className="h-5 w-5 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold font-body">{mockNotifications.filter(n => !n.isRead).length} Non Lues</div>
+              <div className="text-2xl font-bold font-body">{unreadNotificationsCount} Non Lues</div>
               <Link href="/notifications">
                 <Button variant="link" className="p-0 h-auto text-xs font-body">Voir toutes les notifications</Button>
               </Link>
@@ -477,17 +508,23 @@ export default function DashboardPage() {
               <CardDescription className="font-body">Dernières alertes et informations importantes.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
-              {clientSideRendered && mockNotifications.slice(0, 3).map(notif => (
-                <div key={notif.id} className={`flex items-start gap-3 p-3 rounded-md border ${!notif.isRead ? 'bg-accent/10 border-accent' : 'bg-card'}`}>
-                  <div className="pt-1">{getNotificationIcon(notif.type)}</div>
-                  <div>
-                    <p className="font-semibold font-body">{notif.title}</p>
-                    <p className="text-sm text-muted-foreground font-body">{notif.message}</p>
-                    <p className="text-xs text-muted-foreground/70 font-body">{new Date(notif.timestamp).toLocaleString('fr-FR')}</p>
-                  </div>
-                </div>
-              ))}
-              {!clientSideRendered && Array.from({length: 3}).map((_, i) => <div key={i} className="h-16 bg-muted rounded-md animate-pulse"></div>)}
+              {clientSideRendered && dashboardNotifications.length > 0 ? (
+                  dashboardNotifications.slice(0, 3).map(notif => (
+                    <div key={notif.id} className={`flex items-start gap-3 p-3 rounded-md border ${!notif.isRead ? 'bg-accent/10 border-accent' : 'bg-card'}`}>
+                      <div className="pt-1">{getNotificationIcon(notif.type)}</div>
+                      <div>
+                        <p className={`font-semibold font-body ${!notif.isRead ? 'text-primary' : ''}`}>{notif.title}</p>
+                        <p className="text-sm text-muted-foreground font-body">{notif.message}</p>
+                        <p className="text-xs text-muted-foreground/70 font-body">{new Date(notif.timestamp).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short'})}</p>
+                      </div>
+                    </div>
+                  ))
+                ) : clientSideRendered && dashboardNotifications.length === 0 ? (
+                    <p className="text-muted-foreground font-body text-center py-4">Aucune notification récente.</p>
+                ) : (
+                 Array.from({length: 3}).map((_, i) => <div key={i} className="h-20 bg-muted rounded-md animate-pulse"></div>)
+                )
+              }
               <div className="mt-4">
                  <Link href="/notifications"><Button variant="outline" className="w-full font-body">Voir toutes les notifications</Button></Link>
               </div>
@@ -498,7 +535,3 @@ export default function DashboardPage() {
     </AppLayout>
   );
 }
-
-    
-
-    
