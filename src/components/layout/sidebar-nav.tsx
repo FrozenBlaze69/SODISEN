@@ -14,7 +14,6 @@ import {
   Package,
   Users, 
   BookMarked, 
-  Brain, 
   UserCog, // Pour settings/users
   UserCircle, // Pour settings/profile
 } from 'lucide-react';
@@ -47,7 +46,7 @@ const navItemsConfig: NavItem[] = [
   { href: '/reservations', label: 'Réservations', icon: BookMarked, roles: ['chef_gerant', 'soignant', 'famille_invite', 'cuisinier'] },
   { href: '/attendance', label: 'Présences', icon: ClipboardList, roles: ['chef_gerant', 'soignant'] },
   { href: '/notifications', label: 'Notifications', icon: Bell, roles: ['chef_gerant', 'cuisinier', 'soignant'] },
-  { href: '/ai-menu-suggestion', label: 'Suggestion IA Menu', icon: Brain, roles: ['chef_gerant', 'cuisinier'] },
+  // { href: '/ai-menu-suggestion', label: 'Suggestion IA Menu', icon: Brain, roles: ['chef_gerant', 'cuisinier'] }, // Removed
   { 
     href: '/settings', 
     label: 'Paramètres', 

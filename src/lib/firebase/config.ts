@@ -20,12 +20,13 @@ import { getFirestore } from "firebase/firestore";
 //    Si ces valeurs ne sont pas correctes, l'application NE POURRA PAS se connecter à Firestore.
 //
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY", // Remplacez par votre clé API
-  authDomain: "YOUR_AUTH_DOMAIN", // Remplacez par votre domaine d'authentification
-  projectId: "YOUR_PROJECT_ID", // Remplacez par votre ID de projet
-  storageBucket: "YOUR_STORAGE_BUCKET", // Remplacez par votre bucket de stockage
-  messagingSenderId: "YOUR_MESSAGING_SENDER_ID", // Remplacez par votre ID d'expéditeur de messagerie
-  appId: "YOUR_APP_ID" // Remplacez par votre ID d'application
+  apiKey: "AIzaSyCMLPSozmzZQ3pp8gLDeI3MHtSU1x-vi2c",
+  authDomain: "sodisen-6cd03.firebaseapp.com",
+  projectId: "sodisen-6cd03",
+  storageBucket: "sodisen-6cd03.firebasestorage.app",
+  messagingSenderId: "59897635478",
+  appId: "1:59897635478:web:0f622f1acb3ea00ca498b7",
+  measurementId: "G-NW0S8WJ34X"
 };
 
 // Initialize Firebase

@@ -135,18 +135,18 @@ export interface MealReservationFormData {
   comments?: string;
 }
 
-// Pour la suggestion de menu par IA
-export interface MenuSuggestionInput {
-  dietaryNeeds: string; // e.g., "Végétarien, sans gluten"
-  mealType: 'starter' | 'main' | 'dessert';
-  preferences?: string; // e.g., "aime les plats épicés, n'aime pas les champignons"
-}
+// // Pour la suggestion de menu par IA -- Removed
+// export interface MenuSuggestionInput {
+//   dietaryNeeds: string; // e.g., "Végétarien, sans gluten"
+//   mealType: 'starter' | 'main' | 'dessert';
+//   preferences?: string; // e.g., "aime les plats épicés, n'aime pas les champignons"
+// }
 
-export interface MenuSuggestionOutput {
-  suggestedDishName: string;
-  description: string;
-  reasoning?: string; // Why this dish fits the criteria
-}
+// export interface MenuSuggestionOutput {
+//   suggestedDishName: string;
+//   description: string;
+//   reasoning?: string; // Why this dish fits the criteria
+// }
 
 // Pour le contexte d'authentification
 export interface AuthContextType {
