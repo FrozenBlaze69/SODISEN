@@ -7,13 +7,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import type { Notification, Resident, AttendanceRecord, Meal, WeeklyDayPlan, PlannedMealItem, MealType } from '@/types';
-import { AlertTriangle, CheckCircle2, Info, Users, UtensilsCrossed, BellRing, ClipboardCheck, Upload, Loader2, Clock } from 'lucide-react';
+import { Users, UtensilsCrossed, BellRing, ClipboardCheck, Upload, Loader2, Clock, AlertTriangle as IconAlertTriangle } from 'lucide-react';
 import Link from 'next/link';
 import { Input } from '@/components/ui/input';
 import { useToast } from "@/hooks/use-toast";
 import { handleMenuUpload } from './actions';
 import { format, parseISO, isToday } from 'date-fns';
 import { onResidentsUpdate } from '@/lib/firebase/firestoreClientService';
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 
 export const todayISO = new Date().toISOString().split('T')[0]; 
@@ -90,6 +91,7 @@ export default function DashboardPage() {
   const [dashboardNotifications, setDashboardNotifications] = useState<Notification[]>(initialMockNotificationsForDashboard);
   const [currentMealFocus, setCurrentMealFocus] = useState<MealType>('lunch');
   const [currentTime, setCurrentTime] = useState<string | null>(null);
+  const [allergyConflictAlerts, setAllergyConflictAlerts] = useState<string[]>([]);
 
 
   useEffect(() => {
@@ -99,8 +101,8 @@ export default function DashboardPage() {
         const currentHour = now.getHours();
         setCurrentMealFocus(currentHour < LUNCH_HOUR_THRESHOLD ? 'lunch' : 'dinner');
     };
-    updateCurrentTimeAndFocus(); // Initial call
-    const timerId = setInterval(updateCurrentTimeAndFocus, 60000); // Update every minute
+    updateCurrentTimeAndFocus(); 
+    const timerId = setInterval(updateCurrentTimeAndFocus, 60000); 
 
     return () => clearInterval(timerId);
   }, []);
@@ -228,7 +230,7 @@ export default function DashboardPage() {
     switch (type) {
       case 'allergy_alert':
       case 'emergency':
-        return <AlertTriangle className="h-5 w-5 text-destructive" />;
+        return <IconAlertTriangle className="h-5 w-5 text-destructive" />;
       case 'absence':
       case 'outing':
         return <Info className="h-5 w-5 text-yellow-500" />;
@@ -259,6 +261,45 @@ export default function DashboardPage() {
     });
     return counts;
   }, [presentAttendancesForFocusedMeal, activeResidents]);
+
+
+  useEffect(() => {
+    if (!clientSideRendered || isLoadingResidents || !mealsForFocusedMeal.length || !activeResidents.length) {
+      setAllergyConflictAlerts([]);
+      return;
+    }
+
+    const newAlerts: string[] = [];
+    const presentResidentDetails = presentAttendancesForFocusedMeal
+      .map(att => activeResidents.find(r => r.id === att.residentId))
+      .filter((r): r is Resident => !!r);
+
+    presentResidentDetails.forEach(resident => {
+      if (resident.allergies && resident.allergies.length > 0) {
+        mealsForFocusedMeal.forEach(meal => {
+          if (meal.allergenTags && meal.allergenTags.length > 0) {
+            const conflictingAllergens = resident.allergies.filter(allergy =>
+              meal.allergenTags.some(tag => tag.toLowerCase().includes(allergy.toLowerCase())) ||
+              meal.allergenTags.some(tag => allergy.toLowerCase().includes(tag.toLowerCase()))
+            );
+
+            if (conflictingAllergens.length > 0) {
+              newAlerts.push(
+                `Alerte : ${resident.firstName} ${resident.lastName} est allergique à (${conflictingAllergens.join(', ')}) et le plat "${meal.name}" (${meal.category}) contient potentiellement cet allergène.`
+              );
+            }
+          }
+        });
+      }
+    });
+    setAllergyConflictAlerts(Array.from(new Set(newAlerts)));
+  }, [
+    clientSideRendered,
+    isLoadingResidents,
+    mealsForFocusedMeal,
+    presentAttendancesForFocusedMeal,
+    activeResidents
+  ]);
 
 
   const onFileUpload = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -334,6 +375,31 @@ export default function DashboardPage() {
             )}
         </div>
 
+        {clientSideRendered && allergyConflictAlerts.length > 0 && (
+          <Card className="border-destructive bg-destructive/5">
+            <CardHeader className="pb-3 pt-4">
+              <CardTitle className="font-headline text-destructive flex items-center text-lg">
+                <IconAlertTriangle className="h-5 w-5 mr-2" />
+                Alertes de Conflit d'Allergies ({focusedMealText})
+              </CardTitle>
+              <CardDescription className="font-body text-destructive/90 text-xs">
+                Vérifiez attentivement les plats pour les résidents concernés. Ces alertes sont basées sur les allergies déclarées et les tags des plats du menu.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="pt-0 pb-3">
+              <Alert variant="destructive" className="bg-transparent border-0 p-0">
+                <div className="space-y-1.5">
+                  {allergyConflictAlerts.map((alertMsg, index) => (
+                    <div key={index} className="text-sm font-body text-destructive-foreground bg-destructive/10 p-2 rounded-md flex items-start">
+                       <IconAlertTriangle className="h-4 w-4 mr-2 mt-0.5 flex-shrink-0" /> 
+                       <span>{alertMsg}</span>
+                    </div>
+                  ))}
+                </div>
+              </Alert>
+            </CardContent>
+          </Card>
+        )}
 
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           <Card>
@@ -394,22 +460,20 @@ export default function DashboardPage() {
               </div>
               <CardDescription className="font-body mt-2">
                 Ce récapitulatif des textures est basé sur les résidents marqués comme présents pour le {focusedMealText.toLowerCase()}.
-                {importedFileName ? ( // An Excel file has been imported
-                  isDisplayingImportedMenuForFocusedMeal ? ( // And the meals for today's focus ARE from this Excel
-                    <> Les plats listés ci-dessous pour le {focusedMealText.toLowerCase()} proviennent de votre fichier Excel importé : <strong>{importedFileName}</strong>.</>
-                  ) : ( // Excel is imported, BUT meals for today's focus are NOT from it (using defaults)
+                {importedFileName ? ( 
+                  isDisplayingImportedMenuForFocusedMeal ? ( 
+                    <> Les plats listés ci-dessous pour le {focusedMealText.toLowerCase()} proviennent de votre fichier Excel importé : <strong>{importedFileName}</strong>. Un fichier Excel peut contenir les menus du déjeuner et du dîner.</>
+                  ) : ( 
                     (() => {
-                      const todayPlan = importedWeeklyPlan!.find(dayPlan => isToday(parseISO(dayPlan.date))); // importedWeeklyPlan is guaranteed by importedFileName
+                      const todayPlan = importedWeeklyPlan!.find(dayPlan => isToday(parseISO(dayPlan.date))); 
                       if (todayPlan) {
-                        // Excel has an entry for today, but it's empty for the current meal focus
-                        return <> Le planning Excel (<strong>{importedFileName}</strong>) est chargé. Cependant, il ne contient pas de plats spécifiés pour le {focusedMealText.toLowerCase()} d'aujourd'hui dans ce fichier (vérifiez 'TypeRepas' et 'RolePlat'). Les plats affichés ci-dessous sont donc les plats par défaut.</>;
+                        return <> Le planning Excel (<strong>{importedFileName}</strong>) est chargé. Cependant, il ne contient pas de plats spécifiés pour le {focusedMealText.toLowerCase()} d'aujourd'hui dans ce fichier (vérifiez 'TypeRepas' et 'RolePlat'). Les plats affichés ci-dessous sont donc les plats par défaut. Un fichier Excel peut contenir les menus du déjeuner et du dîner.</>;
                       } else {
-                        // Excel is loaded, but no entry at all for today's date
-                        return <> Le planning Excel (<strong>{importedFileName}</strong>) est chargé, mais aucun menu n'y est défini pour la date d'aujourd'hui. Les plats affichés ci-dessous sont donc les plats par défaut.</>;
+                        return <> Le planning Excel (<strong>{importedFileName}</strong>) est chargé, mais aucun menu n'y est défini pour la date d'aujourd'hui. Les plats affichés ci-dessous sont donc les plats par défaut. Un fichier Excel peut contenir les menus du déjeuner et du dîner.</>;
                       }
                     })()
                   )
-                ) : ( // No Excel file has been imported
+                ) : ( 
                   <> Aucun planning Excel n'a été importé. Les plats affichés ci-dessous sont les plats par défaut. Un fichier Excel peut contenir les menus du déjeuner et du dîner.</>
                 )}
                 {importedFileName && <Button variant="link" size="sm" className="p-0 h-auto text-xs ml-1" onClick={clearImportedPlan}>Effacer le planning importé</Button>}
@@ -494,3 +558,4 @@ export default function DashboardPage() {
     </AppLayout>
   );
 }
+
