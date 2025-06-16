@@ -8,49 +8,69 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import type { Resident, AttendanceRecord } from '@/types';
-import { PlusCircle, MoreHorizontal, FilePenLine, UserX, UserCheck, MinusSquare, HelpCircle, Loader2, Users } from 'lucide-react';
+import type { Resident, AttendanceRecord, MealType } from '@/types';
+import { PlusCircle, MoreHorizontal, FilePenLine, UserX, UserCheck, MinusSquare, HelpCircle, Loader2, Users, CheckSquare, XSquare } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { onResidentsUpdate } from '@/lib/firebase/firestoreClientService'; 
-import { mockAttendanceFallback } from '@/app/page'; // Import mockAttendanceFallback from dashboard page
-// todayISO est nécessaire pour filtrer les présences du jour
-const todayISO = new Date().toISOString().split('T')[0];
+
+const TODAY_ISO = new Date().toISOString().split('T')[0];
+const LOCAL_STORAGE_ATTENDANCE_KEY_PREFIX = 'simulatedDailyAttendance_';
 
 
 export default function ResidentsPage() {
   const [residents, setResidents] = useState<Resident[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [dailyAttendanceRecords, setDailyAttendanceRecords] = useState<AttendanceRecord[]>([]);
+  const [clientSideRendered, setClientSideRendered] = useState(false);
+
+  const currentAttendanceKey = `${LOCAL_STORAGE_ATTENDANCE_KEY_PREFIX}${TODAY_ISO}`;
 
   useEffect(() => {
+    setClientSideRendered(true);
     setIsLoading(true);
-    // S'abonner aux mises à jour des résidents depuis Firestore
-    const unsubscribe = onResidentsUpdate((updatedResidents) => {
+    
+    const unsubscribeResidents = onResidentsUpdate((updatedResidents) => {
       setResidents(updatedResidents);
-      setIsLoading(false);
+      // Keep isLoading true until attendance is also potentially loaded
     });
 
-    // Nettoyer l'abonnement lors du démontage du composant
-    return () => unsubscribe();
-  }, []);
+    try {
+      const storedAttendance = localStorage.getItem(currentAttendanceKey);
+      if (storedAttendance) {
+        setDailyAttendanceRecords(JSON.parse(storedAttendance) as AttendanceRecord[]);
+      } else {
+        setDailyAttendanceRecords([]); // No fallback needed here, just empty if nothing stored
+      }
+    } catch (e) {
+      console.error("Error reading daily attendance from localStorage for residents page", e);
+      setDailyAttendanceRecords([]);
+    }
+    
+    setIsLoading(false); // Set loading to false after both residents and attendance attempted
+
+    return () => unsubscribeResidents();
+  }, [currentAttendanceKey]);
 
 
   const getResidentLunchStatus = (residentId: string, isActive: boolean): React.ReactNode => {
+    if (!clientSideRendered) {
+        return <Badge variant="outline"><Loader2 className="mr-1 h-3 w-3 animate-spin" />...</Badge>;
+    }
     if (!isActive) {
       return <Badge variant="outline" className="bg-gray-100 text-gray-600"><UserX className="mr-1 h-4 w-4" />Inactif</Badge>;
     }
 
-    // Utilise mockAttendanceFallback pour le statut du déjeuner
-    const attendanceRecord = mockAttendanceFallback.find(
-      (att: AttendanceRecord) => att.residentId === residentId && att.date === todayISO && att.mealType === 'lunch'
+    const attendanceRecord = dailyAttendanceRecords.find(
+      (att: AttendanceRecord) => att.residentId === residentId && att.date === TODAY_ISO && att.mealType === 'lunch'
     );
 
     if (attendanceRecord) {
       switch (attendanceRecord.status) {
         case 'present':
-          return <Badge variant="default" className="bg-green-100 text-green-700"><UserCheck className="mr-1 h-4 w-4" />Présent(e)</Badge>;
+          return <Badge variant="default" className="bg-green-100 text-green-700"><CheckSquare className="mr-1 h-4 w-4" />Présent(e)</Badge>;
         case 'absent':
-          return <Badge variant="destructive" className="bg-red-100 text-red-700"><UserX className="mr-1 h-4 w-4" />Absent(e)</Badge>;
+          return <Badge variant="destructive" className="bg-red-100 text-red-700"><XSquare className="mr-1 h-4 w-4" />Absent(e)</Badge>;
         case 'external':
           return <Badge variant="secondary" className="bg-yellow-100 text-yellow-700"><MinusSquare className="mr-1 h-4 w-4" />Extérieur</Badge>;
         default: 
@@ -81,11 +101,11 @@ export default function ResidentsPage() {
                 Informations des Résidents
             </CardTitle>
             <CardDescription className="font-body">
-              Consultez les informations des résidents récupérées depuis la base de données et leur statut de présence au déjeuner du jour.
+              Consultez les informations des résidents récupérées depuis la base de données et leur statut de présence au déjeuner du jour (mis à jour depuis la page "Suivi des Présences").
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {isLoading ? (
+            {isLoading && !clientSideRendered ? ( // Show loader only on initial server render or if explicitly loading
               <div className="flex justify-center items-center py-10">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
                 <p className="ml-2 font-body text-muted-foreground">Chargement des résidents...</p>
@@ -185,3 +205,5 @@ export default function ResidentsPage() {
     </AppLayout>
   );
 }
+
+    
