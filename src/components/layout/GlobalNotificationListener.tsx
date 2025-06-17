@@ -14,7 +14,14 @@ const getInitialProcessedIds = (): Set<string> => {
     try {
       const storedIds = sessionStorage.getItem(PROCESSED_NOTIF_IDS_SESSION_KEY);
       if (storedIds) {
-        return new Set(JSON.parse(storedIds));
+        const parsed = JSON.parse(storedIds);
+        if (Array.isArray(parsed)) { // Ensure it's an array before creating Set
+           return new Set(parsed);
+        } else {
+            console.warn("GlobalNotificationListener: stored processedNotificationIds is not an array, resetting.");
+            sessionStorage.removeItem(PROCESSED_NOTIF_IDS_SESSION_KEY);
+            return new Set();
+        }
       }
     } catch (e) {
       console.error("Error parsing processedNotificationIds from sessionStorage:", e);
@@ -33,7 +40,7 @@ export function GlobalNotificationListener() {
 
   useEffect(() => {
     const unsubscribe = onSharedNotificationsUpdate(
-      (allNotifications, newNotificationsBatch) => { // newNotificationsBatch should contain only genuinely new notifications
+      (allNotifications, newNotificationsBatch) => { 
         
         let newIdsAddedToSessionStorage = false;
         newNotificationsBatch.forEach((notif) => {
@@ -43,7 +50,6 @@ export function GlobalNotificationListener() {
             const notificationDate = new Date(notif.timestamp);
             const now = new Date();
             // Only play sound/toast if notification is very recent (e.g., < 2 minutes old)
-            // This prevents a barrage of sounds if many "new" (to this session, e.g. after reconnect) older notifications arrive
             if (now.getTime() - notificationDate.getTime() < 120000) { // 120000ms = 2 minutes
               toast({
                   title: notif.title,
@@ -83,3 +89,4 @@ export function GlobalNotificationListener() {
 
   return null; // This component does not render anything itself
 }
+

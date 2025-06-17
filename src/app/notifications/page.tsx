@@ -47,16 +47,24 @@ export default function NotificationsPage() {
     try {
       const storedReadIds = localStorage.getItem(READ_NOTIFICATIONS_LOCAL_STORAGE_KEY);
       if (storedReadIds) {
-        setReadNotificationIds(new Set(JSON.parse(storedReadIds)));
+        const parsed = JSON.parse(storedReadIds);
+        if (Array.isArray(parsed)) {
+            setReadNotificationIds(new Set(parsed));
+        } else {
+            console.warn("NotificationsPage: storedReadIds is not an array, resetting.");
+            localStorage.removeItem(READ_NOTIFICATIONS_LOCAL_STORAGE_KEY);
+            // setReadNotificationIds will remain new Set() from initialState
+        }
       }
     } catch (error) {
       console.error("Error loading read notification IDs from localStorage:", error);
+      localStorage.removeItem(READ_NOTIFICATIONS_LOCAL_STORAGE_KEY);
     }
 
     // Subscribe to notifications from Firestore
     setIsLoading(true);
     const unsubscribe = onSharedNotificationsUpdate(
-      (allNotifs, newNotifsBatch) => { // Correctly use the first parameter for all notifications
+      (allNotifs, newNotifsBatch) => { 
         setAllNotifications(allNotifs);
         setIsLoading(false);
       },
@@ -150,14 +158,9 @@ export default function NotificationsPage() {
         type: 'info', 
         title: data.title,
         message: data.message,
-        // isRead is handled by Firestore default / local state
-        // relatedResidentId can be added if needed for custom notifications
       };
 
       await addSharedNotificationToFirestore(newNotificationData);
-      // Toast and sound will be handled by GlobalNotificationListener
-      // We can still show a local confirmation toast if desired:
-      // toast({ title: "Notification envoyée", description: "Votre notification personnalisée a été envoyée." });
       form.reset();
     } catch (error) {
       console.error("Error sending custom notification:", error);
