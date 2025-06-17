@@ -22,7 +22,7 @@ type OptimizedAttendanceData = Record<string, {
   [key in MealType]?: { status: AttendanceStatus; mealLocation: MealLocation; notes?: string }
 }>;
 
-const MEAL_TYPES: MealType[] = ['breakfast', 'lunch', 'dinner'];
+const MEAL_TYPES: MealType[] = ['lunch', 'dinner']; // Breakfast removed
 
 // Helper function for deep copying the OptimizedAttendanceData structure
 const deepCopyOptimizedAttendance = (data: OptimizedAttendanceData): OptimizedAttendanceData => {
@@ -33,7 +33,7 @@ const deepCopyOptimizedAttendance = (data: OptimizedAttendanceData): OptimizedAt
     if (meals) {
       for (const mealType in meals) {
         const mealDetails = meals[mealType as MealType];
-        if (mealDetails) {
+        if (mealDetails && MEAL_TYPES.includes(mealType as MealType)) { // Ensure only relevant meal types are copied
           copy[residentId]![mealType as MealType] = { ...mealDetails };
         }
       }
@@ -54,10 +54,10 @@ const translateStatus = (status: AttendanceStatus): string => {
 
 const translateMealType = (mealType: MealType): string => {
   switch (mealType) {
-    case 'breakfast': return 'le petit-déjeuner';
+    // case 'breakfast': return 'le petit-déjeuner'; // Removed
     case 'lunch': return 'le déjeuner';
     case 'dinner': return 'le dîner';
-    case 'snack': return 'la collation';
+    case 'snack': return 'la collation'; // Kept for type consistency, though not in MEAL_TYPES for this page
     default: return mealType;
   }
 };
@@ -92,7 +92,8 @@ export default function AttendancePage() {
         const storedData = localStorage.getItem(currentLocalStorageKey);
         if (storedData) {
           const parsedData = JSON.parse(storedData) as AttendanceRecord[];
-          storedAttendanceArray = parsedData.filter(ar => ar.date === TODAY_ISO);
+          // Filter stored array for today AND for relevant meal types only
+          storedAttendanceArray = parsedData.filter(ar => ar.date === TODAY_ISO && MEAL_TYPES.includes(ar.mealType));
         }
       } catch (e) {
         console.error("Error reading attendance from localStorage", e);
@@ -165,27 +166,29 @@ export default function AttendancePage() {
     if (mealData) {
       return mealData[field];
     }
+    // Default for lunch/dinner if not set
     return field === 'status' ? 'present' : 'dining_hall';
   };
   
   const getNotesForResidentRow = (residentId: string): string => {
-    return attendanceData[residentId]?.['dinner']?.notes || '';
+    // Notes are shared, try getting from 'lunch' first, then 'dinner' if needed, or an empty string.
+    // This assumes notes are applied to all meals in MEAL_TYPES via handleNotesChangeForRow.
+    if (attendanceData[residentId]?.[MEAL_TYPES[0]]) {
+      return attendanceData[residentId]?.[MEAL_TYPES[0]]?.notes || '';
+    }
+    return '';
   };
 
   const handleNotesChangeForRow = (residentId: string, notesValue: string) => {
     setAttendanceData(prev => {
-      const dinnerData = prev[residentId]?.['dinner'] || { status: 'present', mealLocation: 'dining_hall' };
-      const breakfastData = prev[residentId]?.['breakfast'] || { status: 'present', mealLocation: 'dining_hall' };
-      const lunchData = prev[residentId]?.['lunch'] || { status: 'present', mealLocation: 'dining_hall' };
-
+      const updatedMealsForResident = { ...prev[residentId] };
+      MEAL_TYPES.forEach(mealType => {
+        const mealData = prev[residentId]?.[mealType] || { status: 'present', mealLocation: 'dining_hall' };
+        updatedMealsForResident[mealType] = { ...mealData, notes: notesValue };
+      });
       return {
         ...prev,
-        [residentId]: {
-          ...prev[residentId],
-          ['breakfast']: { ...breakfastData, notes: notesValue },
-          ['lunch']: { ...lunchData, notes: notesValue },
-          ['dinner']: { ...dinnerData, notes: notesValue },
-        }
+        [residentId]: updatedMealsForResident,
       };
     });
   };
@@ -196,6 +199,8 @@ export default function AttendancePage() {
       const dataToSave: AttendanceRecord[] = Object.entries(attendanceData).flatMap(([residentId, meals]) =>
         Object.entries(meals).map(([mealTypeStr, details]) => {
           const mealType = mealTypeStr as MealType;
+          // Ensure we only save meal types that are part of our current MEAL_TYPES
+          if (!MEAL_TYPES.includes(mealType)) return null; 
           return {
             id: `${residentId}-${mealType}-${TODAY_ISO}`, 
             residentId,
@@ -205,11 +210,10 @@ export default function AttendancePage() {
             mealLocation: details.mealLocation,
             notes: details.notes,
           };
-        })
+        }).filter(Boolean) as AttendanceRecord[] // filter(Boolean) removes nulls
       );
       localStorage.setItem(currentLocalStorageKey, JSON.stringify(dataToSave));
       
-      // Generate notifications for changes
       const newNotifications: Notification[] = [];
       const residentMap = new Map(residents.map(r => [r.id, r]));
 
@@ -217,13 +221,12 @@ export default function AttendancePage() {
         const resident = residentMap.get(residentId);
         if (!resident) return;
 
-        MEAL_TYPES.forEach(mealType => {
+        MEAL_TYPES.forEach(mealType => { // This will iterate only over lunch and dinner
           const currentData = attendanceData[residentId]?.[mealType];
           const initialData = initialAttendanceDataForUndo[residentId]?.[mealType];
 
           if (!currentData || !initialData) return; 
 
-          // Check status change
           if (currentData.status !== initialData.status) {
             newNotifications.push({
               id: `notif-${Date.now()}-${residentId}-${mealType}-status`,
@@ -236,7 +239,6 @@ export default function AttendancePage() {
             });
           }
 
-          // Check meal location change (only if present and was present, and new location is not N/A)
           if (currentData.status === 'present' && initialData.status === 'present' && 
               currentData.mealLocation !== initialData.mealLocation && 
               currentData.mealLocation !== 'not_applicable') {
@@ -258,7 +260,6 @@ export default function AttendancePage() {
           const existingNotificationsRaw = localStorage.getItem(SHARED_NOTIFICATIONS_KEY);
           let allNotifications: Notification[] = existingNotificationsRaw ? JSON.parse(existingNotificationsRaw) : [];
           allNotifications = [...newNotifications, ...allNotifications]; 
-          // allNotifications = allNotifications.slice(0, 50); // Optional: Limit stored notifications
           localStorage.setItem(SHARED_NOTIFICATIONS_KEY, JSON.stringify(allNotifications));
         } catch (e) {
           console.error("Error saving new notifications to localStorage", e);
@@ -336,7 +337,7 @@ export default function AttendancePage() {
                     {MEAL_TYPES.map(mealType => (
                       <React.Fragment key={mealType}>
                         <TableHead className="text-center font-headline min-w-[140px]">
-                          {mealType === 'breakfast' ? 'P. Déj.' : mealType === 'lunch' ? 'Déjeuner' : 'Dîner'} (Statut)
+                          {mealType === 'lunch' ? 'Déjeuner' : 'Dîner'} (Statut)
                         </TableHead>
                         <TableHead className="text-center font-headline min-w-[150px]">
                           Lieu
