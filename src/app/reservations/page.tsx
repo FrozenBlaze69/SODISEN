@@ -21,15 +21,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { CalendarIcon, Send, Loader2, Users, Trash2, BellRing } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from "@/hooks/use-toast";
-import type { MealReservationFormData, MealReservation, Notification } from '@/types'; // MealReservationFormData.mealDate is Date for the form
-import { handleMealReservation } from '@/app/actions'; // Server action
+import type { MealReservationFormData, MealReservation, Notification } from '@/types';
+import { handleMealReservation } from '@/app/actions';
 
 const LOCAL_STORAGE_RESERVATIONS_KEY = 'mealReservations';
 const SHARED_NOTIFICATIONS_KEY = 'sharedAppNotifications';
 
-// Schéma de validation Zod pour le formulaire de réservation (côté client)
-// mealDate reste z.date() ici car le composant Calendar et react-hook-form fonctionnent mieux avec des objets Date.
-// La conversion en chaîne se fera avant l'envoi à l'action serveur.
 const reservationFormSchema = z.object({
   residentName: z.string().min(2, { message: "Le nom du résident/personne est requis (minimum 2 caractères)." }),
   mealDate: z.date({
@@ -52,8 +49,6 @@ const reservationFormSchema = z.object({
 
 type ReservationFormValues = z.infer<typeof reservationFormSchema>;
 
-// Type pour les données envoyées à l'action serveur
-// (différent de ReservationFormValues car mealDate est une chaîne)
 type ServerActionReservationData = Omit<ReservationFormValues, 'mealDate'> & {
   mealDate: string;
 };
@@ -91,7 +86,6 @@ export default function MealReservationPage() {
   const onSubmit: SubmitHandler<ReservationFormValues> = async (clientFormData) => {
     setIsSubmitting(true);
     try {
-      // Préparer les données pour l'action serveur : convertir mealDate en chaîne 'yyyy-MM-dd'
       const serverActionData: ServerActionReservationData = {
         ...clientFormData,
         mealDate: formatDateFn(clientFormData.mealDate, 'yyyy-MM-dd'),
@@ -102,25 +96,31 @@ export default function MealReservationPage() {
       if (result.success && result.reservationDetails) {
         const newReservation = result.reservationDetails;
         
-
-        const updatedReservations = [newReservation, ...reservationsList].sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-        setReservationsList(updatedReservations);
+        let successfullySavedToLocalStorage = false;
+        setReservationsList(prevReservations => {
+            const updatedList = [newReservation, ...prevReservations].sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+            if (clientSideRendered) {
+                try {
+                    localStorage.setItem(LOCAL_STORAGE_RESERVATIONS_KEY, JSON.stringify(updatedList));
+                    successfullySavedToLocalStorage = true;
+                } catch (error) {
+                    console.error("Error saving new reservation to localStorage:", error);
+                }
+            }
+            return updatedList;
+        });
         
-        if (clientSideRendered) {
-          try {
-            localStorage.setItem(LOCAL_STORAGE_RESERVATIONS_KEY, JSON.stringify(updatedReservations));
-            toast({ // Moved toast here to ensure it only shows on successful local save as well
+        if (successfullySavedToLocalStorage) {
+            toast({
               title: "Réservation enregistrée",
               description: result.message,
             });
-          } catch (error) {
-            console.error("Error saving new reservation to localStorage:", error);
-            toast({
+        } else if (clientSideRendered) { // Only toast error if client side and save failed
+             toast({
               variant: "destructive",
               title: "Erreur de sauvegarde locale",
               description: "La réservation a été créée mais n'a pas pu être sauvegardée localement. Elle pourrait ne pas persister après rechargement.",
             });
-          }
         }
         
         const newNotification: Notification = {
@@ -169,28 +169,48 @@ export default function MealReservationPage() {
   };
 
   const handleDeleteReservation = (reservationId: string) => {
-    if (!clientSideRendered) { // Should not happen if button is clickable
+    if (!clientSideRendered) {
         toast({ variant: "destructive", title: "Erreur", description: "L'application n'est pas prête."});
         return;
     }
 
-    if (window.confirm("Êtes-vous sûr de vouloir supprimer cette réservation ?")) {
-        const updatedReservations = reservationsList.filter(r => r.id !== reservationId);
-        setReservationsList(updatedReservations); // Optimistic UI update
+    if (window.confirm(`Êtes-vous sûr de vouloir supprimer cette réservation (ID: ${reservationId}) ?`)) {
+        let itemFoundAndRemoved = false;
+        let localStorageSuccess = false;
 
-        try {
-            localStorage.setItem(LOCAL_STORAGE_RESERVATIONS_KEY, JSON.stringify(updatedReservations));
-            toast({title: "Réservation supprimée", description: "La réservation a été retirée de la liste."});
-        } catch (error) {
-            console.error("Error saving updated reservations to localStorage after delete:", error);
-            toast({
-                variant: "destructive",
-                title: "Erreur de Sauvegarde",
-                description: "Impossible de sauvegarder la suppression dans le stockage local. La réservation pourrait réapparaître après un rechargement."
-            });
-            // Consider reverting the optimistic update if critical, though more complex:
-            // setReservationsList(reservationsList); // Revert to original list on error
-        }
+        setReservationsList(prevReservations => {
+            const listBeforeFilter = [...prevReservations]; // Create a copy for comparison
+            const updatedList = listBeforeFilter.filter(r => r.id !== reservationId);
+            
+            if (updatedList.length < listBeforeFilter.length) {
+                itemFoundAndRemoved = true;
+                try {
+                    localStorage.setItem(LOCAL_STORAGE_RESERVATIONS_KEY, JSON.stringify(updatedList));
+                    localStorageSuccess = true;
+                } catch (error) {
+                    console.error("Error saving updated reservations to localStorage after delete:", error);
+                    localStorageSuccess = false;
+                }
+            } else {
+                 itemFoundAndRemoved = false; // Item not found in the list
+            }
+            return updatedList;
+        });
+
+        // Give React a moment to process the state update before toasting
+        setTimeout(() => {
+            if (itemFoundAndRemoved && localStorageSuccess) {
+                toast({title: "Réservation supprimée", description: "La réservation a été retirée de la liste."});
+            } else if (itemFoundAndRemoved && !localStorageSuccess) {
+                toast({
+                    variant: "destructive",
+                    title: "Erreur de Sauvegarde",
+                    description: "Impossible de sauvegarder la suppression dans le stockage local. La réservation pourrait réapparaître après un rechargement."
+                });
+            } else if (!itemFoundAndRemoved) {
+                 toast({ variant: "default", title: "Information", description: "La réservation n'a pas été trouvée ou était déjà supprimée." });
+            }
+        }, 0);
     }
   }
 
@@ -393,7 +413,13 @@ export default function MealReservationPage() {
                                     <TableCell className="max-w-[200px] truncate">{resa.comments || '-'}</TableCell>
                                     <TableCell>{formatDateFn(parseISO(resa.createdAt), "dd/MM/yy HH:mm", { locale: fr })}</TableCell>
                                     <TableCell className="text-right">
-                                        <Button variant="ghost" size="icon" onClick={() => handleDeleteReservation(resa.id)} aria-label="Supprimer la réservation">
+                                        <Button 
+                                            variant="ghost" 
+                                            size="icon" 
+                                            onClick={() => handleDeleteReservation(resa.id)} 
+                                            aria-label="Supprimer la réservation"
+                                            disabled={!clientSideRendered}
+                                        >
                                             <Trash2 className="h-4 w-4 text-destructive"/>
                                         </Button>
                                     </TableCell>
@@ -411,3 +437,4 @@ export default function MealReservationPage() {
       </div>
     </AppLayout>
   );
+}
