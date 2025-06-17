@@ -1,13 +1,13 @@
 
 'use client';
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { AppLayout } from '@/components/layout/app-layout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { Resident, AttendanceRecord, MealLocation, AttendanceStatus, MealType, Notification } from '@/types';
-import { Save, Undo, ChevronLeft, ChevronRight, Loader2, Users } from 'lucide-react';
+import { Save, Undo, ChevronLeft, ChevronRight, Loader2, Users, Building } from 'lucide-react';
 import Image from 'next/image';
 import { onResidentsUpdate } from '@/lib/firebase/firestoreClientService';
 import { useToast } from "@/hooks/use-toast";
@@ -16,15 +16,12 @@ const TODAY_ISO = new Date().toISOString().split('T')[0];
 const LOCAL_STORAGE_ATTENDANCE_KEY_PREFIX = 'simulatedDailyAttendance_';
 const SHARED_NOTIFICATIONS_KEY = 'sharedAppNotifications';
 
-// Type for the optimized attendance data structure in state
 type OptimizedAttendanceData = Record<string, {
-  // residentId is the key
   [key in MealType]?: { status: AttendanceStatus; mealLocation: MealLocation; notes?: string }
 }>;
 
-const MEAL_TYPES: MealType[] = ['lunch', 'dinner']; // Breakfast removed
+const MEAL_TYPES: MealType[] = ['lunch', 'dinner'];
 
-// Helper function for deep copying the OptimizedAttendanceData structure
 const deepCopyOptimizedAttendance = (data: OptimizedAttendanceData): OptimizedAttendanceData => {
   const copy: OptimizedAttendanceData = {};
   for (const residentId in data) {
@@ -33,7 +30,7 @@ const deepCopyOptimizedAttendance = (data: OptimizedAttendanceData): OptimizedAt
     if (meals) {
       for (const mealType in meals) {
         const mealDetails = meals[mealType as MealType];
-        if (mealDetails && MEAL_TYPES.includes(mealType as MealType)) { // Ensure only relevant meal types are copied
+        if (mealDetails && MEAL_TYPES.includes(mealType as MealType)) {
           copy[residentId]![mealType as MealType] = { ...mealDetails };
         }
       }
@@ -42,7 +39,6 @@ const deepCopyOptimizedAttendance = (data: OptimizedAttendanceData): OptimizedAt
   return copy;
 };
 
-// Helper functions for translation
 const translateStatus = (status: AttendanceStatus): string => {
   switch (status) {
     case 'present': return 'présent(e)';
@@ -54,10 +50,9 @@ const translateStatus = (status: AttendanceStatus): string => {
 
 const translateMealType = (mealType: MealType): string => {
   switch (mealType) {
-    // case 'breakfast': return 'le petit-déjeuner'; // Removed
     case 'lunch': return 'le déjeuner';
     case 'dinner': return 'le dîner';
-    case 'snack': return 'la collation'; // Kept for type consistency, though not in MEAL_TYPES for this page
+    case 'snack': return 'la collation';
     default: return mealType;
   }
 };
@@ -69,6 +64,16 @@ const translateMealLocation = (location: MealLocation): string => {
     case 'not_applicable': return 'N/A';
     default: return location;
   }
+};
+
+const getUnitColorClass = (unitName: string | undefined): string => {
+  const name = (unitName || 'Non assignée').toLowerCase();
+  if (name.includes('bleue')) return 'bg-blue-100 border-blue-200 text-blue-800 hover:bg-blue-200/80';
+  if (name.includes('verte')) return 'bg-green-100 border-green-200 text-green-800 hover:bg-green-200/80';
+  if (name.includes('rouge')) return 'bg-red-100 border-red-200 text-red-800 hover:bg-red-200/80';
+  if (name.includes('orange')) return 'bg-orange-100 border-orange-200 text-orange-800 hover:bg-orange-200/80';
+  if (name.includes('jaune')) return 'bg-yellow-100 border-yellow-200 text-yellow-800 hover:bg-yellow-200/80';
+  return 'bg-slate-100 border-slate-200 text-slate-800 hover:bg-slate-200/80'; // Default color
 };
 
 
@@ -92,7 +97,6 @@ export default function AttendancePage() {
         const storedData = localStorage.getItem(currentLocalStorageKey);
         if (storedData) {
           const parsedData = JSON.parse(storedData) as AttendanceRecord[];
-          // Filter stored array for today AND for relevant meal types only
           storedAttendanceArray = parsedData.filter(ar => ar.date === TODAY_ISO && MEAL_TYPES.includes(ar.mealType));
         }
       } catch (e) {
@@ -128,6 +132,33 @@ export default function AttendancePage() {
     });
     return () => unsubscribe();
   }, [currentLocalStorageKey]);
+
+  const groupedResidentsByUnit = useMemo(() => {
+    if (!residents || residents.length === 0) return {};
+    const grouped = residents.reduce((acc, resident) => {
+      const unitName = resident.unit || 'Non assignée';
+      if (!acc[unitName]) {
+        acc[unitName] = [];
+      }
+      acc[unitName].push(resident);
+      return acc;
+    }, {} as Record<string, Resident[]>);
+
+    // Sort residents within each unit by last name, then first name
+    for (const unitName in grouped) {
+      grouped[unitName].sort((a, b) => {
+        const lastNameComparison = a.lastName.localeCompare(b.lastName);
+        if (lastNameComparison !== 0) return lastNameComparison;
+        return a.firstName.localeCompare(b.firstName);
+      });
+    }
+    return grouped;
+  }, [residents]);
+
+  const sortedUnitNames = useMemo(() => {
+    return Object.keys(groupedResidentsByUnit).sort((a, b) => a.localeCompare(b));
+  }, [groupedResidentsByUnit]);
+
 
   const handleAttendanceChange = (
     residentId: string,
@@ -166,13 +197,10 @@ export default function AttendancePage() {
     if (mealData) {
       return mealData[field];
     }
-    // Default for lunch/dinner if not set
     return field === 'status' ? 'present' : 'dining_hall';
   };
   
   const getNotesForResidentRow = (residentId: string): string => {
-    // Notes are shared, try getting from 'lunch' first, then 'dinner' if needed, or an empty string.
-    // This assumes notes are applied to all meals in MEAL_TYPES via handleNotesChangeForRow.
     if (attendanceData[residentId]?.[MEAL_TYPES[0]]) {
       return attendanceData[residentId]?.[MEAL_TYPES[0]]?.notes || '';
     }
@@ -199,7 +227,6 @@ export default function AttendancePage() {
       const dataToSave: AttendanceRecord[] = Object.entries(attendanceData).flatMap(([residentId, meals]) =>
         Object.entries(meals).map(([mealTypeStr, details]) => {
           const mealType = mealTypeStr as MealType;
-          // Ensure we only save meal types that are part of our current MEAL_TYPES
           if (!MEAL_TYPES.includes(mealType)) return null; 
           return {
             id: `${residentId}-${mealType}-${TODAY_ISO}`, 
@@ -210,7 +237,7 @@ export default function AttendancePage() {
             mealLocation: details.mealLocation,
             notes: details.notes,
           };
-        }).filter(Boolean) as AttendanceRecord[] // filter(Boolean) removes nulls
+        }).filter(Boolean) as AttendanceRecord[]
       );
       localStorage.setItem(currentLocalStorageKey, JSON.stringify(dataToSave));
       
@@ -221,7 +248,7 @@ export default function AttendancePage() {
         const resident = residentMap.get(residentId);
         if (!resident) return;
 
-        MEAL_TYPES.forEach(mealType => { // This will iterate only over lunch and dinner
+        MEAL_TYPES.forEach(mealType => {
           const currentData = attendanceData[residentId]?.[mealType];
           const initialData = initialAttendanceDataForUndo[residentId]?.[mealType];
 
@@ -233,7 +260,7 @@ export default function AttendancePage() {
               timestamp: new Date().toISOString(),
               type: currentData.status === 'absent' || currentData.status === 'external' ? 'absence' : 'attendance',
               title: `Changement de Présence`,
-              message: `${resident.firstName} ${resident.lastName} est maintenant ${translateStatus(currentData.status)} pour ${translateMealType(mealType)}.`,
+              message: `${resident.firstName} ${resident.lastName} est maintenant ${translateStatus(currentData.status)} pour ${translateMealType(mealType)}. (Unité: ${resident.unit || 'N/A'})`,
               isRead: false,
               relatedResidentId: residentId,
             });
@@ -247,7 +274,7 @@ export default function AttendancePage() {
                 timestamp: new Date().toISOString(),
                 type: 'info',
                 title: `Changement Lieu Repas`,
-                message: `${resident.firstName} ${resident.lastName} mangera ${translateMealLocation(currentData.mealLocation)} pour ${translateMealType(mealType)}.`,
+                message: `${resident.firstName} ${resident.lastName} mangera ${translateMealLocation(currentData.mealLocation)} pour ${translateMealType(mealType)}. (Unité: ${resident.unit || 'N/A'})`,
                 isRead: false,
                 relatedResidentId: residentId,
             });
@@ -313,7 +340,7 @@ export default function AttendancePage() {
           <CardHeader>
             <CardTitle className="font-headline">Grille des Présences du {new Date(TODAY_ISO).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}</CardTitle>
             <CardDescription className="font-body">
-              Modifiez les présences et cliquez sur "Enregistrer Présences". Les notes générales sont partagées pour tous les repas du résident pour ce jour.
+              Modifiez les présences et cliquez sur "Enregistrer Présences". Les résidents sont groupés par unité. Les notes générales sont partagées pour tous les repas du résident pour ce jour.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -348,66 +375,78 @@ export default function AttendancePage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {residents.map((resident) => (
-                    <TableRow key={resident.id} className="font-body">
-                      <TableCell className="font-medium sticky left-0 bg-card z-10">
-                        <div className="flex items-center gap-2">
-                          <Image 
-                            src={resident.avatarUrl || "https://placehold.co/32x32.png"} 
-                            alt={`${resident.firstName} ${resident.lastName}`} 
-                            width={32} 
-                            height={32} 
-                            className="rounded-full"
-                            data-ai-hint="person avatar"
-                          />
-                           <span>{resident.lastName}, {resident.firstName}</span>
-                        </div>
-                      </TableCell>
-                      {MEAL_TYPES.map(mealType => (
-                        <React.Fragment key={`${resident.id}-${mealType}`}>
-                        <TableCell className="text-center">
-                          <Select 
-                            value={getAttendanceValue(resident.id, mealType, 'status')}
-                            onValueChange={(value) => handleAttendanceChange(resident.id, mealType, 'status', value as AttendanceStatus)}
-                          >
-                            <SelectTrigger className="w-[120px] mx-auto">
-                              <SelectValue/>
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="present">Présent</SelectItem>
-                              <SelectItem value="absent">Absent</SelectItem>
-                              <SelectItem value="external">Extérieur</SelectItem>
-                            </SelectContent>
-                          </Select>
+                  {sortedUnitNames.map(unitName => (
+                    <React.Fragment key={unitName}>
+                      <TableRow className={getUnitColorClass(unitName)}>
+                        <TableCell colSpan={6} className="font-semibold py-2 px-4 text-base">
+                          <div className="flex items-center gap-2">
+                            <Building className="h-5 w-5"/>
+                            Unité: {unitName} ({groupedResidentsByUnit[unitName].length} résident(s))
+                          </div>
                         </TableCell>
-                         <TableCell className="text-center">
-                          <Select 
-                            value={getAttendanceValue(resident.id, mealType, 'mealLocation')}
-                            onValueChange={(value) => handleAttendanceChange(resident.id, mealType, 'mealLocation', value as MealLocation)}
-                            disabled={getAttendanceValue(resident.id, mealType, 'status') === 'absent' || getAttendanceValue(resident.id, mealType, 'status') === 'external'}
-                          >
-                            <SelectTrigger className="w-[140px] mx-auto">
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="dining_hall">Salle à manger</SelectItem>
-                                <SelectItem value="room">En chambre</SelectItem>
-                                <SelectItem value="not_applicable">N/A (si absent/ext.)</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </TableCell>
-                        </React.Fragment>
+                      </TableRow>
+                      {groupedResidentsByUnit[unitName].map((resident) => (
+                        <TableRow key={resident.id} className="font-body">
+                          <TableCell className="font-medium sticky left-0 bg-card z-10">
+                            <div className="flex items-center gap-2">
+                              <Image 
+                                src={resident.avatarUrl || "https://placehold.co/32x32.png"} 
+                                alt={`${resident.firstName} ${resident.lastName}`} 
+                                width={32} 
+                                height={32} 
+                                className="rounded-full"
+                                data-ai-hint="person avatar"
+                              />
+                               <span>{resident.lastName}, {resident.firstName}</span>
+                            </div>
+                          </TableCell>
+                          {MEAL_TYPES.map(mealType => (
+                            <React.Fragment key={`${resident.id}-${mealType}`}>
+                            <TableCell className="text-center">
+                              <Select 
+                                value={getAttendanceValue(resident.id, mealType, 'status')}
+                                onValueChange={(value) => handleAttendanceChange(resident.id, mealType, 'status', value as AttendanceStatus)}
+                              >
+                                <SelectTrigger className="w-[120px] mx-auto">
+                                  <SelectValue/>
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="present">Présent</SelectItem>
+                                  <SelectItem value="absent">Absent</SelectItem>
+                                  <SelectItem value="external">Extérieur</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </TableCell>
+                             <TableCell className="text-center">
+                              <Select 
+                                value={getAttendanceValue(resident.id, mealType, 'mealLocation')}
+                                onValueChange={(value) => handleAttendanceChange(resident.id, mealType, 'mealLocation', value as MealLocation)}
+                                disabled={getAttendanceValue(resident.id, mealType, 'status') === 'absent' || getAttendanceValue(resident.id, mealType, 'status') === 'external'}
+                              >
+                                <SelectTrigger className="w-[140px] mx-auto">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="dining_hall">Salle à manger</SelectItem>
+                                    <SelectItem value="room">En chambre</SelectItem>
+                                    <SelectItem value="not_applicable">N/A (si absent/ext.)</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </TableCell>
+                            </React.Fragment>
+                          ))}
+                          <TableCell className="text-center">
+                             <input 
+                                type="text" 
+                                placeholder="Motif absence/externe..." 
+                                className="p-2 border rounded-md w-full text-sm" 
+                                value={getNotesForResidentRow(resident.id)} 
+                                onChange={(e) => handleNotesChangeForRow(resident.id, e.target.value)}
+                             />
+                          </TableCell>
+                        </TableRow>
                       ))}
-                      <TableCell className="text-center">
-                         <input 
-                            type="text" 
-                            placeholder="Motif absence/externe..." 
-                            className="p-2 border rounded-md w-full text-sm" 
-                            value={getNotesForResidentRow(resident.id)} 
-                            onChange={(e) => handleNotesChangeForRow(resident.id, e.target.value)}
-                         />
-                      </TableCell>
-                    </TableRow>
+                    </React.Fragment>
                   ))}
                 </TableBody>
               </Table>
