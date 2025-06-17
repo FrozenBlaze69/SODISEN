@@ -328,7 +328,7 @@ export default function AttendancePage() {
             });
           });
           
-          const audio = new Audio(); // Placeholder: const audio = new Audio('/sounds/notification.mp3');
+          const audio = new Audio('/sounds/notification.mp3');
           audio.play().catch(error => console.warn("Audio play failed (attendance):", error));
 
         } catch (e) {

@@ -151,8 +151,7 @@ export default function MealReservationPage() {
           description: toastMessage,
         });
 
-        // Placeholder: const audio = new Audio('/sounds/notification.mp3'); // Remplacez par le chemin de votre fichier son
-        const audio = new Audio();
+        const audio = new Audio('/sounds/notification.mp3');
         audio.play().catch(error => console.warn("Audio play failed (reservation):", error));
         
         form.reset({
