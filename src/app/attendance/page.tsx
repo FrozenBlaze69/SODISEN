@@ -69,18 +69,19 @@ const translateMealLocation = (location: MealLocation): string => {
 const getUnitColorClass = (unitName: string | undefined): string => {
   const name = (unitName || 'Non assignée').toLowerCase();
 
+  // Specific unit names
   if (name.includes('jardin')) return 'bg-green-100 border-green-300 text-green-800 hover:bg-green-200/80';
-  if (name.includes('vignes')) return 'bg-purple-100 border-purple-300 text-purple-800 hover:bg-purple-200/80'; // Adjusted for Vignes, can be reddish too
-  if (name.includes('colline')) return 'bg-yellow-100 border-yellow-300 text-yellow-800 hover:bg-yellow-200/80'; // Earthy tone for Colline
-  if (name.includes('forêt')) return 'bg-emerald-100 border-emerald-300 text-emerald-800 hover:bg-emerald-200/80'; // Darker green for Forêt
-  if (name.includes('rivière')) return 'bg-sky-100 border-sky-300 text-sky-800 hover:bg-sky-200/80'; // Blue for Rivière
-  if (name.includes('roseau')) return 'bg-lime-100 border-lime-300 text-lime-800 hover:bg-lime-200/80'; // Light green/beige for Roseau
-  if (name.includes('pinède')) return 'bg-teal-100 border-teal-300 text-teal-800 hover:bg-teal-200/80'; // Teal/pine green for Pinède
+  if (name.includes('vignes')) return 'bg-purple-100 border-purple-300 text-purple-800 hover:bg-purple-200/80';
+  if (name.includes('colline')) return 'bg-yellow-100 border-yellow-300 text-yellow-800 hover:bg-yellow-200/80';
+  if (name.includes('forêt')) return 'bg-emerald-600 text-emerald-50 border-emerald-700 hover:bg-emerald-700/90'; // Darker emerald green
+  if (name.includes('rivière')) return 'bg-sky-100 border-sky-300 text-sky-800 hover:bg-sky-200/80';
+  if (name.includes('roseau')) return 'bg-lime-100 border-lime-300 text-lime-800 hover:bg-lime-200/80';
+  if (name.includes('pinède')) return 'bg-teal-100 border-teal-300 text-teal-800 hover:bg-teal-200/80';
   
-  // Existing colors for more generic terms if specific unit names are not matched
+  // Thematic keywords as fallback if specific name not matched above
   if (name.includes('bleu') || name.includes('mer') || name.includes('océan')) return 'bg-blue-100 border-blue-300 text-blue-800 hover:bg-blue-200/80';
   if (name.includes('lavande') || name.includes('violet') || name.includes('aurore') || name.includes('lilas') || name.includes('améthyste')) return 'bg-purple-100 border-purple-300 text-purple-800 hover:bg-purple-200/80';
-  if (name.includes('vert') || name.includes('prairie') || name.includes('émeraude')) return 'bg-green-100 border-green-300 text-green-800 hover:bg-green-200/80';
+  if (name.includes('vert') || name.includes('prairie') || name.includes('émeraude')) return 'bg-emerald-100 border-emerald-300 text-emerald-800 hover:bg-emerald-200/80'; // Standard emerald
   if (name.includes('jaune') || name.includes('soleil') || name.includes('lumière') || name.includes('mimosa') || name.includes('citron')) return 'bg-yellow-100 border-yellow-300 text-yellow-800 hover:bg-yellow-200/80';
   if (name.includes('orange') || name.includes('coucher') || name.includes('automne') || name.includes('mandarine') || name.includes('abricot')) return 'bg-orange-100 border-orange-300 text-orange-800 hover:bg-orange-200/80';
   if (name.includes('rose') || name.includes('fleur') || name.includes('corail') || name.includes('pivoine')) return 'bg-pink-100 border-pink-300 text-pink-800 hover:bg-pink-200/80';
@@ -88,7 +89,7 @@ const getUnitColorClass = (unitName: string | undefined): string => {
   
   if (name.includes('non assignée')) return 'bg-slate-100 border-slate-300 text-slate-800 hover:bg-slate-200/80';
   
-  return 'bg-gray-100 border-gray-300 text-gray-800 hover:bg-gray-200/80'; // Fallback for other names
+  return 'bg-gray-100 border-gray-300 text-gray-800 hover:bg-gray-200/80'; // Default fallback
 };
 
 
@@ -477,3 +478,4 @@ export default function AttendancePage() {
     </AppLayout>
   );
 }
+
