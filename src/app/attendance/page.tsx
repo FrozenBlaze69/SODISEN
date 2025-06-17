@@ -70,10 +70,10 @@ const getUnitColorClass = (unitName: string | undefined): string => {
   const name = (unitName || 'Non assignée').toLowerCase();
 
   // Specific unit names
-  if (name.includes('jardin')) return 'bg-green-100 border-green-300 text-green-800 hover:bg-green-200/80';
+  if (name.includes('jardin')) return 'bg-pink-100 border-pink-300 text-pink-800 hover:bg-pink-200/80'; // Changed to pale rose
   if (name.includes('vignes')) return 'bg-purple-100 border-purple-300 text-purple-800 hover:bg-purple-200/80';
   if (name.includes('colline')) return 'bg-yellow-100 border-yellow-300 text-yellow-800 hover:bg-yellow-200/80';
-  if (name.includes('forêt')) return 'bg-emerald-100 border-emerald-300 text-emerald-800 hover:bg-emerald-200/80'; // Softened forest green
+  if (name.includes('forêt')) return 'bg-emerald-100 border-emerald-300 text-emerald-800 hover:bg-emerald-200/80';
   if (name.includes('rivière') || name.includes('riviere')) return 'bg-blue-100 border-blue-300 text-blue-800 hover:bg-blue-200/80';
   if (name.includes('roseau')) return 'bg-lime-100 border-lime-300 text-lime-800 hover:bg-lime-200/80';
   if (name.includes('pinède')) return 'bg-teal-100 border-teal-300 text-teal-800 hover:bg-teal-200/80';
@@ -84,7 +84,7 @@ const getUnitColorClass = (unitName: string | undefined): string => {
   if (name.includes('vert') || name.includes('prairie') || name.includes('émeraude')) return 'bg-emerald-100 border-emerald-300 text-emerald-800 hover:bg-emerald-200/80';
   if (name.includes('jaune') || name.includes('soleil') || name.includes('lumière') || name.includes('mimosa') || name.includes('citron')) return 'bg-yellow-100 border-yellow-300 text-yellow-800 hover:bg-yellow-200/80';
   if (name.includes('orange') || name.includes('coucher') || name.includes('automne') || name.includes('mandarine') || name.includes('abricot')) return 'bg-orange-100 border-orange-300 text-orange-800 hover:bg-orange-200/80';
-  if (name.includes('rose') || name.includes('fleur') || name.includes('corail') || name.includes('pivoine')) return 'bg-pink-100 border-pink-300 text-pink-800 hover:bg-pink-200/80';
+  // if (name.includes('rose') || name.includes('fleur') || name.includes('corail') || name.includes('pivoine')) return 'bg-pink-100 border-pink-300 text-pink-800 hover:bg-pink-200/80'; // Already used for Jardin, keep if Jardin logic changes
   if (name.includes('rouge') || name.includes('passion') || name.includes('volcan') || name.includes('rubis') || name.includes('coquelicot')) return 'bg-red-100 border-red-300 text-red-800 hover:bg-red-200/80';
   
   if (name.includes('non assignée')) return 'bg-slate-100 border-slate-300 text-slate-800 hover:bg-slate-200/80';
