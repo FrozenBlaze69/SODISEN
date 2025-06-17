@@ -23,7 +23,7 @@ import { cn } from '@/lib/utils';
 import { useToast } from "@/hooks/use-toast";
 import type { MealReservationFormData, MealReservation, Notification } from '@/types';
 import { handleMealReservation, deleteReservationFromFirestore } from '@/app/actions';
-import { onReservationsUpdate } from '@/lib/firebase/firestoreClientService'; // Import the listener
+import { onReservationsUpdate } from '@/lib/firebase/firestoreClientService'; 
 
 const SHARED_NOTIFICATIONS_KEY = 'sharedAppNotifications';
 
@@ -49,7 +49,6 @@ const reservationFormSchema = z.object({
 
 type ReservationFormValues = z.infer<typeof reservationFormSchema>;
 
-// Data structure for server action (mealDate as string)
 type ServerActionReservationData = Omit<ReservationFormValues, 'mealDate'> & {
   mealDate: string;
 };
@@ -168,18 +167,17 @@ export default function MealReservationPage() {
     }
 
     if (window.confirm(`Êtes-vous sûr de vouloir supprimer cette réservation (ID: ${reservationId}) ? Cette action est irréversible.`)) {
-      setIsSubmitting(true);
+      setIsSubmitting(true); 
       try {
-        const result = await deleteReservationFromFirestore(reservationId);
+        const result = await deleteReservationFromFirestore(reservationId); 
         if (result.success) {
-          toast({ title: "Réservation supprimée", description: result.message });
-          // La mise à jour de la liste est gérée par l'écouteur onReservationsUpdate 
-          // qui réagit aux changements dans Firestore.
+          toast({ title: "Demande de suppression traitée", description: result.message + " La liste sera mise à jour si la suppression de la base de données est effective." });
+          // La mise à jour de la liste est gérée par l'écouteur onReservationsUpdate
         } else {
           toast({
             variant: "destructive",
             title: "Échec de la suppression",
-            description: result.message || "Une erreur est survenue lors de la suppression de la réservation de la base de données.",
+            description: result.message || "Une erreur est survenue lors de la suppression de la réservation.",
           });
         }
       } catch (error) {
@@ -424,4 +422,3 @@ export default function MealReservationPage() {
     </AppLayout>
   );
 }
-
