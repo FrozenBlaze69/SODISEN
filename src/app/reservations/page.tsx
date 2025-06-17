@@ -101,7 +101,7 @@ export default function MealReservationPage() {
         if (clientSideRendered) {
             try {
                 localStorage.setItem(LOCAL_STORAGE_RESERVATIONS_KEY, JSON.stringify(updatedListForState));
-                setReservationsList(updatedListForState); // Update state only if localStorage is successful
+                setReservationsList(updatedListForState); 
                 toast({
                   title: "Réservation enregistrée",
                   description: result.message,
@@ -129,7 +129,6 @@ export default function MealReservationPage() {
                 });
             }
         } else {
-            // Handle server-side or pre-client render scenario if necessary, though unlikely for this form
             setReservationsList(updatedListForState);
              toast({
               title: "Réservation traitée (client non prêt)",
@@ -170,29 +169,30 @@ export default function MealReservationPage() {
     }
 
     if (window.confirm(`Êtes-vous sûr de vouloir supprimer cette réservation (ID: ${reservationId}) ? Cette action est irréversible.`)) {
-        const currentReservations = [...reservationsList];
-        const updatedReservations = currentReservations.filter(r => r.id !== reservationId);
+        const currentReservations = [...reservationsList]; 
+        const reservationExists = currentReservations.some(r => r.id === reservationId);
 
-        if (updatedReservations.length < currentReservations.length) { // Item was found
-            try {
-                localStorage.setItem(LOCAL_STORAGE_RESERVATIONS_KEY, JSON.stringify(updatedReservations));
-                // If localStorage update is successful, then update the state
-                setReservationsList(updatedReservations);
-                toast({title: "Réservation supprimée", description: "La réservation a été retirée de la liste et sauvegardée."});
-            } catch (error) {
-                console.error("Error saving updated reservations to localStorage after delete:", error);
-                toast({
-                    variant: "destructive",
-                    title: "Erreur de Sauvegarde Locale",
-                    description: "La suppression n'a pas pu être sauvegardée localement. La modification pourrait ne pas persister."
-                });
-                // Important: Do not update state if localStorage fails, to keep UI consistent with presumed source of truth for next load
-            }
-        } else { // Item not found (already deleted or ID mismatch)
-             toast({ variant: "default", title: "Information", description: "La réservation n'a pas été trouvée dans la liste actuelle." });
+        if (!reservationExists) {
+            toast({ variant: "default", title: "Information", description: "La réservation n'a pas été trouvée ou a déjà été supprimée." });
+            return; 
+        }
+
+        const updatedReservations = currentReservations.filter(r => r.id !== reservationId);
+        
+        try {
+            localStorage.setItem(LOCAL_STORAGE_RESERVATIONS_KEY, JSON.stringify(updatedReservations));
+            setReservationsList(updatedReservations); 
+            toast({title: "Réservation supprimée", description: "La réservation a été retirée de la liste et sauvegardée."});
+        } catch (error) {
+            console.error("Error saving updated reservations to localStorage after delete:", error);
+            toast({
+                variant: "destructive",
+                title: "Erreur de Sauvegarde Locale",
+                description: "La suppression n'a pas pu être sauvegardée localement. La modification pourrait ne pas persister."
+            });
         }
     }
-  }
+  };
 
   return (
     <AppLayout>
@@ -418,4 +418,3 @@ export default function MealReservationPage() {
     </AppLayout>
   );
 }
-
