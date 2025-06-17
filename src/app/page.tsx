@@ -144,8 +144,8 @@ export default function DashboardPage() {
 
     setIsLoadingNotifications(true);
     const unsubscribeNotifications = onSharedNotificationsUpdate(
-      (allNotifs) => { // We only care about allNotifs for the dashboard display
-        setDashboardNotifications(allNotifs.slice(0,10)); // Take latest 10 for example
+      (allNotifs, newNotifsBatch) => { // Correctly use the first parameter
+        setDashboardNotifications(allNotifs.slice(0,10)); 
         setIsLoadingNotifications(false);
       }, (error) => {
         console.error("Dashboard: Error listening to shared notifications:", error);
@@ -181,7 +181,7 @@ export default function DashboardPage() {
     const defaultMeals = currentMealFocus === 'lunch' ? initialMockMealsTodayForLunchDashboard : initialMockMealsTodayForDinnerDashboard;
     if (!importedWeeklyPlan) return defaultMeals;
 
-    const todayPlan = importedWeeklyPlan.find(dayPlan => dateIsToday(parseISO(dayPlan.date)));
+    const todayPlan = importedWeeklyPlan.find(dayPlan => currentDateISO && dateIsToday(parseISO(dayPlan.date)));
     if (!todayPlan) return defaultMeals;
 
     const mealData = currentMealFocus === 'lunch' ? todayPlan.meals.lunch : todayPlan.meals.dinner;
@@ -195,7 +195,7 @@ export default function DashboardPage() {
 
   const isDisplayingImportedMenuForFocusedMeal = useMemo(() => {
     if (!currentDateISO || !importedWeeklyPlan) return false;
-    const todayPlan = importedWeeklyPlan.find(dayPlan => dateIsToday(parseISO(dayPlan.date)));
+    const todayPlan = importedWeeklyPlan.find(dayPlan => currentDateISO && dateIsToday(parseISO(dayPlan.date)));
     if (!todayPlan) return false;
     const mealData = currentMealFocus === 'lunch' ? todayPlan.meals.lunch : todayPlan.meals.dinner;
     return !!(mealData.starter || mealData.main || mealData.dessert);
@@ -587,3 +587,4 @@ export default function DashboardPage() {
     </AppLayout>
   );
 }
+

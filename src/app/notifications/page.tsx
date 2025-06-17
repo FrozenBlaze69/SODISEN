@@ -17,7 +17,7 @@ import { useToast } from "@/hooks/use-toast";
 import { addSharedNotificationToFirestore, deleteSharedNotificationFromFirestore } from '@/lib/firebase/firestoreService';
 import { onSharedNotificationsUpdate } from '@/lib/firebase/firestoreClientService';
 
-const READ_NOTIFICATIONS_LOCAL_STORAGE_KEY = 'readSharedNotificationIds';
+const READ_NOTIFICATIONS_LOCAL_STORAGE_KEY = 'readSharedNotificationIdsSodisenApp';
 
 const customNotificationSchema = z.object({
   title: z.string().min(3, { message: "Le titre doit contenir au moins 3 caractères." }).max(100, { message: "Le titre ne peut pas dépasser 100 caractères." }),
@@ -56,8 +56,8 @@ export default function NotificationsPage() {
     // Subscribe to notifications from Firestore
     setIsLoading(true);
     const unsubscribe = onSharedNotificationsUpdate(
-      (updatedNotifications) => {
-        setAllNotifications(updatedNotifications);
+      (allNotifs, newNotifsBatch) => { // Correctly use the first parameter for all notifications
+        setAllNotifications(allNotifs);
         setIsLoading(false);
       },
       (error) => {
@@ -306,3 +306,4 @@ export default function NotificationsPage() {
     </AppLayout>
   );
 }
+
