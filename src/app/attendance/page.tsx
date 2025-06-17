@@ -73,7 +73,7 @@ const getUnitColorClass = (unitName: string | undefined): string => {
   if (name.includes('jardin')) return 'bg-green-100 border-green-300 text-green-800 hover:bg-green-200/80';
   if (name.includes('vignes')) return 'bg-purple-100 border-purple-300 text-purple-800 hover:bg-purple-200/80';
   if (name.includes('colline')) return 'bg-yellow-100 border-yellow-300 text-yellow-800 hover:bg-yellow-200/80';
-  if (name.includes('forêt')) return 'bg-emerald-600 text-emerald-50 border-emerald-700 hover:bg-emerald-700/90';
+  if (name.includes('forêt')) return 'bg-emerald-100 border-emerald-300 text-emerald-800 hover:bg-emerald-200/80'; // Softened forest green
   if (name.includes('rivière') || name.includes('riviere')) return 'bg-blue-100 border-blue-300 text-blue-800 hover:bg-blue-200/80';
   if (name.includes('roseau')) return 'bg-lime-100 border-lime-300 text-lime-800 hover:bg-lime-200/80';
   if (name.includes('pinède')) return 'bg-teal-100 border-teal-300 text-teal-800 hover:bg-teal-200/80';
