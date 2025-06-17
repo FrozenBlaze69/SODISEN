@@ -3,7 +3,7 @@
 
 import { z } from 'zod';
 import * as XLSX from 'xlsx';
-import type { WeeklyDayPlan, PlannedMealItem, MealReservationFormData, MealReservation } from '@/types';
+import type { WeeklyDayPlan, PlannedMealItem, MealReservation } from '@/types'; // MealReservationFormData (client form type) n'est plus directement utilisé comme type de paramètre ici
 import { format, parseISO, isValid, parse } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
@@ -205,13 +205,10 @@ export async function handleMenuUpload(formData: FormData): Promise<FileUploadRe
   }
 }
 
-// Schéma pour la réservation de repas (mis à jour)
+// Schéma Zod pour les données reçues par l'action serveur (mealDate est une chaîne 'yyyy-MM-dd')
 const MealReservationServerSchema = z.object({
-  residentName: z.string().min(1, "Le nom du résident est requis."), // Changé de residentId
-  mealDate: z.date({ // Conservé en tant que Date, sera formaté avant "sauvegarde"
-    required_error: "La date du repas est requise.",
-    invalid_type_error: "Format de date invalide.",
-  }),
+  residentName: z.string().min(1, "Le nom du résident est requis."),
+  mealDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "La date doit être au format AAAA-MM-JJ."),
   mealType: z.enum(['lunch', 'dinner'], {
     required_error: "Le type de repas est requis.",
   }),
@@ -219,8 +216,11 @@ const MealReservationServerSchema = z.object({
   comments: z.string().optional(),
 });
 
+// Type pour les données que cette action serveur attend
+type ServerActionReservationData = z.infer<typeof MealReservationServerSchema>;
+
 export async function handleMealReservation(
-  data: MealReservationFormData // Le type du formulaire côté client, qui envoie une Date
+  data: ServerActionReservationData // Le type de paramètre correspond maintenant à ce que le client envoie
 ): Promise<{ success: boolean; message: string; reservationDetails?: MealReservation }> {
   const validationResult = MealReservationServerSchema.safeParse(data);
 
@@ -234,29 +234,35 @@ export async function handleMealReservation(
     };
   }
 
+  // mealDate est maintenant une chaîne 'yyyy-MM-dd'
   const { residentName, mealDate, mealType, numberOfGuests, comments } = validationResult.data;
 
-  // Simulation de la sauvegarde Firestore
-  // Dans un cas réel, vous utiliseriez un ID unique généré par Firestore ou un UUID.
   const reservationId = `resa_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
   const reservationDetailsToSave: MealReservation = {
     id: reservationId,
     residentName,
-    mealDate: format(mealDate, 'yyyy-MM-dd'),
+    mealDate: mealDate, // mealDate est déjà une chaîne 'yyyy-MM-dd'
     mealType,
     numberOfGuests,
     comments: comments || '',
-    reservedBy: "CURRENT_USER_PLACEHOLDER", // À remplacer par l'ID/nom de l'utilisateur connecté
+    reservedBy: "CURRENT_USER_PLACEHOLDER", 
     createdAt: new Date().toISOString(), 
   };
 
   console.log("Simulation de sauvegarde de la réservation :", reservationDetailsToSave);
-  // Ici, dans une vraie app, on sauvegarderait dans Firestore.
-  // Pour cette simulation, la "sauvegarde" est implicite et réussit toujours.
+
+  // Pour le message de succès, il faut parser la chaîne mealDate pour la reformater.
+  let displayDate = mealDate;
+  try {
+    displayDate = format(parseISO(mealDate), 'dd/MM/yyyy', { locale: fr });
+  } catch (e) {
+    console.error("Error parsing mealDate for display:", e);
+    // Garder la date au format AAAA-MM-JJ si le parsing échoue
+  }
 
   return {
     success: true,
-    message: `Réservation pour ${residentName} et ${numberOfGuests} invité(s) le ${format(mealDate, 'dd/MM/yyyy')} (${mealType === 'lunch' ? 'Déjeuner' : 'Dîner'}) enregistrée avec succès.`,
-    reservationDetails: reservationDetailsToSave, // Retourner les détails complets avec ID et createdAt
+    message: `Réservation pour ${residentName} et ${numberOfGuests} invité(s) le ${displayDate} (${mealType === 'lunch' ? 'Déjeuner' : 'Dîner'}) enregistrée avec succès.`,
+    reservationDetails: reservationDetailsToSave,
   };
 }

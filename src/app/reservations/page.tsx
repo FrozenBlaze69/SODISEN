@@ -5,7 +5,7 @@ import React, { useState, useEffect } from 'react';
 import { useForm, SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { format, addDays, startOfDay, parseISO } from 'date-fns';
+import { format as formatDateFn, addDays, startOfDay, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
 import { AppLayout } from '@/components/layout/app-layout';
@@ -21,13 +21,15 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { CalendarIcon, Send, Loader2, Users, Trash2, BellRing } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from "@/hooks/use-toast";
-import type { MealReservationFormData, MealReservation, Notification } from '@/types';
-import { handleMealReservation } from '@/app/actions';
+import type { MealReservationFormData, MealReservation, Notification } from '@/types'; // MealReservationFormData.mealDate is Date for the form
+import { handleMealReservation } from '@/app/actions'; // Server action
 
 const LOCAL_STORAGE_RESERVATIONS_KEY = 'mealReservations';
 const SHARED_NOTIFICATIONS_KEY = 'sharedAppNotifications';
 
-// Schéma de validation Zod pour le formulaire de réservation
+// Schéma de validation Zod pour le formulaire de réservation (côté client)
+// mealDate reste z.date() ici car le composant Calendar et react-hook-form fonctionnent mieux avec des objets Date.
+// La conversion en chaîne se fera avant l'envoi à l'action serveur.
 const reservationFormSchema = z.object({
   residentName: z.string().min(2, { message: "Le nom du résident/personne est requis (minimum 2 caractères)." }),
   mealDate: z.date({
@@ -35,7 +37,7 @@ const reservationFormSchema = z.object({
     invalid_type_error: "Format de date invalide.",
   }).refine(date => date >= startOfDay(new Date()), {
     message: "La date ne peut pas être dans le passé."
-  }).refine(date => date <= addDays(startOfDay(new Date()), 30), { // Étendu à 30 jours
+  }).refine(date => date <= addDays(startOfDay(new Date()), 30), {
     message: "La réservation ne peut pas excéder 30 jours à l'avance."
   }),
   mealType: z.enum(['lunch', 'dinner'], {
@@ -49,6 +51,12 @@ const reservationFormSchema = z.object({
 });
 
 type ReservationFormValues = z.infer<typeof reservationFormSchema>;
+
+// Type pour les données envoyées à l'action serveur
+// (différent de ReservationFormValues car mealDate est une chaîne)
+type ServerActionReservationData = Omit<ReservationFormValues, 'mealDate'> & {
+  mealDate: string;
+};
 
 export default function MealReservationPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -80,10 +88,17 @@ export default function MealReservationPage() {
     },
   });
 
-  const onSubmit: SubmitHandler<ReservationFormValues> = async (data) => {
+  const onSubmit: SubmitHandler<ReservationFormValues> = async (clientFormData) => {
     setIsSubmitting(true);
     try {
-      const result = await handleMealReservation(data);
+      // Préparer les données pour l'action serveur : convertir mealDate en chaîne 'yyyy-MM-dd'
+      const serverActionData: ServerActionReservationData = {
+        ...clientFormData,
+        mealDate: formatDateFn(clientFormData.mealDate, 'yyyy-MM-dd'),
+      };
+
+      const result = await handleMealReservation(serverActionData);
+      
       if (result.success && result.reservationDetails) {
         const newReservation = result.reservationDetails;
         toast({
@@ -91,20 +106,18 @@ export default function MealReservationPage() {
           description: result.message,
         });
 
-        // Add to local list and update localStorage for reservations
         const updatedReservations = [newReservation, ...reservationsList].sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
         setReservationsList(updatedReservations);
         if (clientSideRendered) {
           localStorage.setItem(LOCAL_STORAGE_RESERVATIONS_KEY, JSON.stringify(updatedReservations));
         }
         
-        // Create and save notification
         const newNotification: Notification = {
             id: `notif-resa-${Date.now()}`,
             timestamp: new Date().toISOString(),
             type: 'reservation_made', 
             title: 'Nouvelle Réservation Repas',
-            message: `${newReservation.residentName} a une réservation pour ${newReservation.numberOfGuests} invité(s) le ${format(parseISO(newReservation.mealDate), 'dd/MM/yyyy')} (${newReservation.mealType === 'lunch' ? 'Déjeuner' : 'Dîner'}).`,
+            message: `${newReservation.residentName} a une réservation pour ${newReservation.numberOfGuests} invité(s) le ${formatDateFn(parseISO(newReservation.mealDate), 'dd/MM/yyyy', { locale: fr })} (${newReservation.mealType === 'lunch' ? 'Déjeuner' : 'Dîner'}).`,
             isRead: false,
         };
 
@@ -118,7 +131,13 @@ export default function MealReservationPage() {
                 console.error("Error saving new reservation notification to localStorage", e);
             }
         }
-        form.reset();
+        form.reset({
+          residentName: '',
+          mealDate: undefined, 
+          mealType: undefined,
+          numberOfGuests: 0,
+          comments: '',
+        });
       } else {
         toast({
           variant: "destructive",
@@ -201,7 +220,7 @@ export default function MealReservationPage() {
                               disabled={isSubmitting}
                             >
                               {field.value ? (
-                                format(field.value, "PPP", { locale: fr })
+                                formatDateFn(field.value, "PPP", { locale: fr })
                               ) : (
                                 <span>Choisir une date</span>
                               )}
@@ -236,7 +255,7 @@ export default function MealReservationPage() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Type de repas</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isSubmitting}>
+                      <Select onValueChange={field.onChange} value={field.value} disabled={isSubmitting}>
                         <FormControl>
                           <SelectTrigger>
                             <SelectValue placeholder="Choisir le type de repas" />
@@ -342,11 +361,11 @@ export default function MealReservationPage() {
                             {reservationsList.map(resa => (
                                 <TableRow key={resa.id} className="font-body">
                                     <TableCell className="font-medium">{resa.residentName}</TableCell>
-                                    <TableCell>{format(parseISO(resa.mealDate), "dd/MM/yyyy", { locale: fr })}</TableCell>
+                                    <TableCell>{formatDateFn(parseISO(resa.mealDate), "dd/MM/yyyy", { locale: fr })}</TableCell>
                                     <TableCell>{resa.mealType === 'lunch' ? 'Déjeuner' : 'Dîner'}</TableCell>
                                     <TableCell className="text-center">{resa.numberOfGuests}</TableCell>
                                     <TableCell className="max-w-[200px] truncate">{resa.comments || '-'}</TableCell>
-                                    <TableCell>{format(parseISO(resa.createdAt), "dd/MM/yy HH:mm", { locale: fr })}</TableCell>
+                                    <TableCell>{formatDateFn(parseISO(resa.createdAt), "dd/MM/yy HH:mm", { locale: fr })}</TableCell>
                                     <TableCell className="text-right">
                                         <Button variant="ghost" size="icon" onClick={() => handleDeleteReservation(resa.id)} aria-label="Supprimer la réservation">
                                             <Trash2 className="h-4 w-4 text-destructive"/>
