@@ -12,7 +12,6 @@ import Image from 'next/image';
 import { onResidentsUpdate } from '@/lib/firebase/firestoreClientService';
 import { useToast } from "@/hooks/use-toast";
 
-const TODAY_ISO = new Date().toISOString().split('T')[0];
 const LOCAL_STORAGE_ATTENDANCE_KEY_PREFIX = 'simulatedDailyAttendance_';
 const SHARED_NOTIFICATIONS_KEY = 'sharedAppNotifications';
 
@@ -79,7 +78,7 @@ const getUnitColorClass = (unitName: string | undefined): string => {
   
   if (name.includes('mer') || name.includes('océan')) return 'bg-blue-100 border-blue-300 text-blue-800 hover:bg-blue-200/80';
   if (name.includes('lavande') || name.includes('violet') || name.includes('aurore') || name.includes('lilas') || name.includes('améthyste')) return 'bg-purple-100 border-purple-300 text-purple-800 hover:bg-purple-200/80';
-  if (name.includes('vert') || name.includes('prairie') || name.includes('émeraude')) return 'bg-emerald-100 border-emerald-300 text-emerald-800 hover:bg-emerald-200/80';
+  // if (name.includes('vert') || name.includes('prairie') || name.includes('émeraude')) return 'bg-emerald-100 border-emerald-300 text-emerald-800 hover:bg-emerald-200/80'; // Already covered by 'forêt' specific or general emerald
   if (name.includes('jaune') || name.includes('soleil') || name.includes('lumière') || name.includes('mimosa') || name.includes('citron')) return 'bg-yellow-100 border-yellow-300 text-yellow-800 hover:bg-yellow-200/80';
   if (name.includes('orange') || name.includes('coucher') || name.includes('automne') || name.includes('mandarine') || name.includes('abricot')) return 'bg-orange-100 border-orange-300 text-orange-800 hover:bg-orange-200/80';
   if (name.includes('rouge') || name.includes('passion') || name.includes('volcan') || name.includes('rubis') || name.includes('coquelicot')) return 'bg-red-100 border-red-300 text-red-800 hover:bg-red-200/80';
@@ -91,15 +90,29 @@ const getUnitColorClass = (unitName: string | undefined): string => {
 
 
 export default function AttendancePage() {
+  const [todayIso, setTodayIso] = useState<string | null>(null);
   const [residents, setResidents] = useState<Resident[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [attendanceData, setAttendanceData] = useState<OptimizedAttendanceData>({});
   const [initialAttendanceDataForUndo, setInitialAttendanceDataForUndo] = useState<OptimizedAttendanceData>({});
   const { toast } = useToast();
 
-  const currentLocalStorageKey = `${LOCAL_STORAGE_ATTENDANCE_KEY_PREFIX}${TODAY_ISO}`;
+  useEffect(() => {
+    const isoDate = new Date().toISOString().split('T')[0];
+    setTodayIso(isoDate);
+  }, []);
+
+  const currentLocalStorageKey = useMemo(() => {
+    if (!todayIso) return null;
+    return `${LOCAL_STORAGE_ATTENDANCE_KEY_PREFIX}${todayIso}`;
+  }, [todayIso]);
 
   useEffect(() => {
+    if (!todayIso || !currentLocalStorageKey) {
+      setIsLoading(true); // Keep loading if date is not set
+      return;
+    }
+    
     setIsLoading(true);
     const unsubscribe = onResidentsUpdate((updatedResidents) => {
       const activeResidents = updatedResidents.filter(r => r.isActive);
@@ -110,7 +123,7 @@ export default function AttendancePage() {
         const storedData = localStorage.getItem(currentLocalStorageKey);
         if (storedData) {
           const parsedData = JSON.parse(storedData) as AttendanceRecord[];
-          storedAttendanceArray = parsedData.filter(ar => ar.date === TODAY_ISO && MEAL_TYPES.includes(ar.mealType));
+          storedAttendanceArray = parsedData.filter(ar => ar.date === todayIso && MEAL_TYPES.includes(ar.mealType));
         }
       } catch (e) {
         console.error("Error reading attendance from localStorage", e);
@@ -144,7 +157,7 @@ export default function AttendancePage() {
       setIsLoading(false);
     });
     return () => unsubscribe();
-  }, [currentLocalStorageKey]);
+  }, [todayIso, currentLocalStorageKey]);
 
   const groupedResidentsByUnit = useMemo(() => {
     if (!residents || residents.length === 0) return {};
@@ -239,15 +252,16 @@ export default function AttendancePage() {
 
 
   const handleSaveAttendances = () => {
+    if (!todayIso) return;
     try {
       const dataToSave: AttendanceRecord[] = Object.entries(attendanceData).flatMap(([residentId, meals]) =>
         Object.entries(meals).map(([mealTypeStr, details]) => {
           const mealType = mealTypeStr as MealType;
           if (!MEAL_TYPES.includes(mealType)) return null; 
           return {
-            id: `${residentId}-${mealType}-${TODAY_ISO}`, 
+            id: `${residentId}-${mealType}-${todayIso}`, 
             residentId,
-            date: TODAY_ISO,
+            date: todayIso,
             mealType,
             status: details.status,
             mealLocation: details.mealLocation,
@@ -255,7 +269,9 @@ export default function AttendancePage() {
           };
         }).filter(Boolean) as AttendanceRecord[]
       );
-      localStorage.setItem(currentLocalStorageKey, JSON.stringify(dataToSave));
+      if (currentLocalStorageKey) {
+        localStorage.setItem(currentLocalStorageKey, JSON.stringify(dataToSave));
+      }
       
       const newNotifications: Notification[] = [];
       const residentMap = new Map(residents.map(r => [r.id, r]));
@@ -312,7 +328,6 @@ export default function AttendancePage() {
             });
           });
           
-          // Play sound once if there are any new notifications
           const audio = new Audio(); // Placeholder: const audio = new Audio('/sounds/notification.mp3');
           audio.play().catch(error => console.warn("Audio play failed (attendance):", error));
 
@@ -325,9 +340,6 @@ export default function AttendancePage() {
       setInitialAttendanceDataForUndo(deepCopyOptimizedAttendance(attendanceData));
       if (newNotifications.length === 0) {
         toast({ title: "Présences Enregistrées", description: "Aucune nouvelle notification générée. Les présences ont été sauvegardées." });
-      } else {
-        // Individual toasts already shown. A general success could be added if desired.
-        // For example: toast({ title: "Opération Terminée", description: "Présences et notifications traitées."});
       }
 
     } catch (e) {
@@ -341,6 +353,16 @@ export default function AttendancePage() {
     toast({ title: "Modifications Annulées", description: "Les présences ont été réinitialisées." });
   };
 
+  if (isLoading || !todayIso) {
+    return (
+        <AppLayout>
+            <div className="flex justify-center items-center py-10">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                <p className="ml-2 font-body text-muted-foreground">Chargement des données de présence...</p>
+            </div>
+        </AppLayout>
+    );
+  }
 
   return (
     <AppLayout>
@@ -349,12 +371,12 @@ export default function AttendancePage() {
           <h1 className="text-3xl font-headline font-semibold text-foreground">Suivi des Présences</h1>
           <div className="flex items-center gap-2">
             <Button variant="outline" size="icon" disabled><ChevronLeft className="h-4 w-4"/></Button>
-            <Select defaultValue={TODAY_ISO} disabled>
+            <Select defaultValue={todayIso} disabled>
               <SelectTrigger className="w-[180px] font-body">
                 <SelectValue placeholder="Choisir une date" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={TODAY_ISO}>{new Date(TODAY_ISO).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}</SelectItem>
+                <SelectItem value={todayIso}>{new Date(todayIso + 'T00:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}</SelectItem>
               </SelectContent>
             </Select>
             <Button variant="outline" size="icon" disabled><ChevronRight className="h-4 w-4"/></Button>
@@ -373,18 +395,13 @@ export default function AttendancePage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="font-headline">Grille des Présences du {new Date(TODAY_ISO).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}</CardTitle>
+            <CardTitle className="font-headline">Grille des Présences du {new Date(todayIso + 'T00:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}</CardTitle>
             <CardDescription className="font-body">
               Modifiez les présences et cliquez sur "Enregistrer Présences". Les résidents sont groupés par unité avec des couleurs distinctes pour chaque en-tête d'unité. Les notes générales sont partagées pour tous les repas du résident pour ce jour.
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {isLoading ? (
-                <div className="flex justify-center items-center py-10">
-                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                    <p className="ml-2 font-body text-muted-foreground">Chargement des données de présence...</p>
-                </div>
-            ) : residents.length === 0 ? (
+            {residents.length === 0 ? (
                 <div className="text-center py-10 text-muted-foreground font-body">
                     <Users className="h-12 w-12 mx-auto mb-4 text-gray-400" />
                     <p className="text-lg">Aucun résident actif trouvé.</p>

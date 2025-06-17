@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { AppLayout } from '@/components/layout/app-layout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,25 +14,38 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { onResidentsUpdate } from '@/lib/firebase/firestoreClientService'; 
 
-const TODAY_ISO = new Date().toISOString().split('T')[0];
 const LOCAL_STORAGE_ATTENDANCE_KEY_PREFIX = 'simulatedDailyAttendance_';
 
 
 export default function ResidentsPage() {
+  const [todayIso, setTodayIso] = useState<string | null>(null);
   const [residents, setResidents] = useState<Resident[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [dailyAttendanceRecords, setDailyAttendanceRecords] = useState<AttendanceRecord[]>([]);
   const [clientSideRendered, setClientSideRendered] = useState(false);
 
-  const currentAttendanceKey = `${LOCAL_STORAGE_ATTENDANCE_KEY_PREFIX}${TODAY_ISO}`;
+  useEffect(() => {
+    const isoDate = new Date().toISOString().split('T')[0];
+    setTodayIso(isoDate);
+    setClientSideRendered(true);
+  }, []);
+  
+  const currentAttendanceKey = useMemo(() => {
+    if (!todayIso) return null;
+    return `${LOCAL_STORAGE_ATTENDANCE_KEY_PREFIX}${todayIso}`;
+  }, [todayIso]);
 
   useEffect(() => {
-    setClientSideRendered(true);
+    if (!clientSideRendered || !todayIso || !currentAttendanceKey) {
+      setIsLoading(true);
+      return;
+    }
+    
     setIsLoading(true);
     
     const unsubscribeResidents = onResidentsUpdate((updatedResidents) => {
       setResidents(updatedResidents);
-      // Keep isLoading true until attendance is also potentially loaded
+      setIsLoading(false); // Set loading to false after residents are loaded
     });
 
     try {
@@ -40,21 +53,21 @@ export default function ResidentsPage() {
       if (storedAttendance) {
         setDailyAttendanceRecords(JSON.parse(storedAttendance) as AttendanceRecord[]);
       } else {
-        setDailyAttendanceRecords([]); // No fallback needed here, just empty if nothing stored
+        setDailyAttendanceRecords([]);
       }
     } catch (e) {
       console.error("Error reading daily attendance from localStorage for residents page", e);
       setDailyAttendanceRecords([]);
     }
-    
-    setIsLoading(false); // Set loading to false after both residents and attendance attempted
+    // Note: isLoading is now primarily controlled by residents loading.
+    // If attendance loading is also critical for initial render, adjust setIsLoading(false) timing.
 
     return () => unsubscribeResidents();
-  }, [currentAttendanceKey]);
+  }, [clientSideRendered, todayIso, currentAttendanceKey]);
 
 
   const getResidentLunchStatus = (residentId: string, isActive: boolean): React.ReactNode => {
-    if (!clientSideRendered) {
+    if (!clientSideRendered || !todayIso) { // Check todayIso as well
         return <Badge variant="outline"><Loader2 className="mr-1 h-3 w-3 animate-spin" />...</Badge>;
     }
     if (!isActive) {
@@ -62,7 +75,7 @@ export default function ResidentsPage() {
     }
 
     const attendanceRecord = dailyAttendanceRecords.find(
-      (att: AttendanceRecord) => att.residentId === residentId && att.date === TODAY_ISO && att.mealType === 'lunch'
+      (att: AttendanceRecord) => att.residentId === residentId && att.date === todayIso && att.mealType === 'lunch'
     );
 
     if (attendanceRecord) {
@@ -79,6 +92,17 @@ export default function ResidentsPage() {
     }
     return <Badge variant="outline"><HelpCircle className="mr-1 h-4 w-4" />Présence Non Renseignée</Badge>;
   };
+
+  if (isLoading && !clientSideRendered) {
+     return (
+        <AppLayout>
+            <div className="flex justify-center items-center py-10">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                <p className="ml-2 font-body text-muted-foreground">Chargement...</p>
+            </div>
+        </AppLayout>
+    );
+  }
 
 
   return (
@@ -105,7 +129,7 @@ export default function ResidentsPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {isLoading && !clientSideRendered ? ( // Show loader only on initial server render or if explicitly loading
+            {isLoading && clientSideRendered ? ( 
               <div className="flex justify-center items-center py-10">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
                 <p className="ml-2 font-body text-muted-foreground">Chargement des résidents...</p>
