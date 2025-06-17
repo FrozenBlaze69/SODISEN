@@ -16,6 +16,7 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Trash2, UserPlus, Edit, Loader2, RotateCcw, Users } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -33,6 +34,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Badge } from '@/components/ui/badge';
 import Image from 'next/image';
 
+const PREDEFINED_UNITS = ["Jardin", "Vignes", "Colline", "Forêt", "Rivière", "Roseau", "Pinède", "Non assignée"];
 
 const residentFormSchema = z.object({
   firstName: z.string().min(1, { message: "Le prénom est requis." }),
@@ -54,7 +56,7 @@ type ResidentFormValues = z.infer<typeof residentFormSchema>;
 const defaultFormValues: ResidentFormValues = {
   firstName: '',
   lastName: '',
-  unit: '',
+  unit: '', // Default to empty, placeholder will show in Select
   roomNumber: '',
   dateOfBirth: '',
   avatarUrl: '',
@@ -133,7 +135,7 @@ export default function ManageResidentsPage() {
     form.reset({
       firstName: resident.firstName,
       lastName: resident.lastName,
-      unit: resident.unit,
+      unit: resident.unit, // This will set the Select value
       roomNumber: resident.roomNumber || '',
       dateOfBirth: resident.dateOfBirth || '',
       avatarUrl: resident.avatarUrl || '',
@@ -216,13 +218,28 @@ export default function ManageResidentsPage() {
                       <FormMessage />
                     </FormItem>
                   )} />
-                  <FormField control={form.control} name="unit" render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Unité</FormLabel>
-                      <FormControl><Input placeholder="Unité A" {...field} disabled={isSubmittingForm || isPending || isDeleting} /></FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )} />
+                  <FormField
+                    control={form.control}
+                    name="unit"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Unité</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value || ''} defaultValue={field.value || ''} disabled={isSubmittingForm || isPending || isDeleting}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Sélectionner une unité" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {PREDEFINED_UNITS.map(unitName => (
+                              <SelectItem key={unitName} value={unitName}>{unitName}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                   <FormField control={form.control} name="roomNumber" render={({ field }) => (
                     <FormItem>
                       <FormLabel>Numéro de Chambre</FormLabel>
