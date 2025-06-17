@@ -6,21 +6,22 @@ import { AppLayout } from '@/components/layout/app-layout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import type { Notification, Resident, AttendanceRecord, Meal, WeeklyDayPlan, PlannedMealItem, MealType } from '@/types';
-import { Users, UtensilsCrossed, BellRing, ClipboardCheck, Upload, Loader2, Clock, AlertTriangle as IconAlertTriangle, CheckCircle2, Info } from 'lucide-react';
+import type { Notification, Resident, AttendanceRecord, Meal, WeeklyDayPlan, PlannedMealItem, MealType, MealReservation } from '@/types';
+import { Users, UtensilsCrossed, BellRing, Upload, Loader2, Clock, AlertTriangle as IconAlertTriangle, CheckCircle2, Info } from 'lucide-react';
 import Link from 'next/link';
 import { Input } from '@/components/ui/input';
 import { useToast } from "@/hooks/use-toast";
 import { handleMenuUpload } from './actions';
 import { format, parseISO, isToday } from 'date-fns';
 import { onResidentsUpdate } from '@/lib/firebase/firestoreClientService';
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 
 export const todayISO = new Date().toISOString().split('T')[0]; 
 const LOCAL_STORAGE_ATTENDANCE_KEY_PREFIX = 'simulatedDailyAttendance_';
 const SHARED_NOTIFICATIONS_KEY = 'sharedAppNotifications'; 
 const LOCAL_STORAGE_WEEKLY_PLAN_FILE_NAME_KEY = 'currentWeeklyPlanFileName';
+const LOCAL_STORAGE_RESERVATIONS_KEY = 'mealReservations';
 
 const LUNCH_HOUR_THRESHOLD = 14; // Switch to dinner view at 2 PM
 
@@ -88,6 +89,7 @@ export default function DashboardPage() {
   const [importedFileName, setImportedFileName] = useState<string | null>(null);
   const [clientSideRendered, setClientSideRendered] = useState(false);
   const [dailyAttendanceRecords, setDailyAttendanceRecords] = useState<AttendanceRecord[]>([]);
+  const [allReservations, setAllReservations] = useState<MealReservation[]>([]);
   const [dashboardNotifications, setDashboardNotifications] = useState<Notification[]>(initialMockNotificationsForDashboard);
   const [currentMealFocus, setCurrentMealFocus] = useState<MealType>('lunch');
   const [currentTime, setCurrentTime] = useState<string | null>(null);
@@ -111,7 +113,8 @@ export default function DashboardPage() {
   const currentAttendanceKey = `${LOCAL_STORAGE_ATTENDANCE_KEY_PREFIX}${todayISO}`;
 
   useEffect(() => {
-    setClientSideRendered(true);
+    setClientSideRendered(true); // Important: must be first thing in useEffect
+    
     const storedPlan = localStorage.getItem('currentWeeklyPlan');
     if (storedPlan) {
       try {
@@ -139,20 +142,28 @@ export default function DashboardPage() {
     }
 
     try {
+        const storedReservations = localStorage.getItem(LOCAL_STORAGE_RESERVATIONS_KEY);
+        if (storedReservations) {
+            setAllReservations(JSON.parse(storedReservations));
+        } else {
+            setAllReservations([]);
+        }
+    } catch (e) {
+        console.error("Error reading reservations from localStorage for dashboard", e);
+        setAllReservations([]);
+    }
+
+    try {
         const storedNotificationsRaw = localStorage.getItem(SHARED_NOTIFICATIONS_KEY);
         if (storedNotificationsRaw) {
             const loadedNotifications: Notification[] = JSON.parse(storedNotificationsRaw);
             if (loadedNotifications.length > 0) {
                  setDashboardNotifications(loadedNotifications.sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
-            } else {
-                 setDashboardNotifications(initialMockNotificationsForDashboard.sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
-            }
-        } else {
-            setDashboardNotifications(initialMockNotificationsForDashboard.sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
-        }
+            } // else, keep initialMockNotificationsForDashboard
+        } // else, keep initialMockNotificationsForDashboard
     } catch (error) {
         console.error("Error loading notifications from localStorage for dashboard:", error);
-        setDashboardNotifications(initialMockNotificationsForDashboard.sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
+        // keep initialMockNotificationsForDashboard
     }
 
 
@@ -210,8 +221,24 @@ export default function DashboardPage() {
     );
   }, [activeResidents, dailyAttendanceRecords, currentMealFocus]);
 
+  const totalGuestsForFocusedMeal = useMemo(() => {
+    if (!clientSideRendered) return 0;
+    return allReservations
+      .filter(res => res.mealDate === todayISO && res.mealType === currentMealFocus)
+      .reduce((sum, res) => sum + res.numberOfGuests, 0);
+  }, [allReservations, currentMealFocus, clientSideRendered]);
+  
+  // Nombre de "couverts résidents" = nombre de résidents pour qui il y a une réservation et qui n'ont pas d'invités (numberOfGuests === 0).
+  // Cela évite de double-compter un résident si son repas est déjà implicite dans "presentAttendancesForFocusedMeal"
+  // mais si la réservation est pour le résident lui-même (sans invité), il faut l'ajouter s'il n'est pas déjà compté comme "présent".
+  // Pour l'instant, la logique la plus simple : total repas = présents (via feuille présence) + nb d'invités (via réservations).
+  // Si une réservation concerne juste le résident SANS invité, elle ne change pas le total car il est soit déjà présent, soit absent.
+  // Si un résident est absent mais a des invités, les invités sont comptés.
+
   const totalActiveResidentsCount = activeResidents.length;
-  const presentForFocusedMealCount = presentAttendancesForFocusedMeal.length;
+  const presentResidentsCountForFocusedMeal = presentAttendancesForFocusedMeal.length;
+  const totalMealsToPrepare = presentResidentsCountForFocusedMeal + totalGuestsForFocusedMeal;
+
 
   const dietSpecificMealsForFocusedMeal = useMemo(() => {
     const presentRes = presentAttendancesForFocusedMeal
@@ -235,6 +262,7 @@ export default function DashboardPage() {
       case 'outing':
         return <Info className="h-5 w-5 text-yellow-500" />;
       case 'urgent_diet_request':
+      case 'reservation_made':
         return <UtensilsCrossed className="h-5 w-5 text-orange-600" />;
       case 'attendance':
       case 'info':
@@ -345,8 +373,9 @@ export default function DashboardPage() {
   }
 
   const unreadNotificationsCount = useMemo(() => {
+    if (!clientSideRendered) return 0;
     return dashboardNotifications.filter(n => !n.isRead).length;
-  }, [dashboardNotifications]);
+  }, [dashboardNotifications, clientSideRendered]);
 
 
   const focusedMealText = currentMealFocus === 'lunch' ? 'Déjeuner' : 'Dîner';
@@ -388,14 +417,14 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent className="pt-0 pb-3">
               <Alert variant="destructive" className="bg-transparent border-0 p-0">
-                <div className="space-y-1.5">
+                <AlertDescription className="space-y-1.5">
                   {allergyConflictAlerts.map((alertMsg, index) => (
                     <div key={index} className="text-sm font-body text-destructive-foreground bg-destructive/10 p-2 rounded-md flex items-start">
                        <IconAlertTriangle className="h-4 w-4 mr-2 mt-0.5 flex-shrink-0" /> 
                        <span>{alertMsg}</span>
                     </div>
                   ))}
-                </div>
+                </AlertDescription>
               </Alert>
             </CardContent>
           </Card>
@@ -410,7 +439,7 @@ export default function DashboardPage() {
             <CardContent>
               {isLoadingResidents ? <Loader2 className="h-6 w-6 animate-spin text-primary my-1" /> : <div className="text-2xl font-bold font-body">{totalActiveResidentsCount}</div>}
               <p className="text-xs text-muted-foreground font-body">
-                {isLoadingResidents ? "Chargement..." : `${presentForFocusedMealCount} présents au ${focusedMealText.toLowerCase()} aujourd'hui`}
+                {isLoadingResidents ? "Chargement..." : `${presentResidentsCountForFocusedMeal} résidents présents et ${totalGuestsForFocusedMeal} invités pour le ${focusedMealText.toLowerCase()} aujourd'hui.`}
               </p>
             </CardContent>
           </Card>
@@ -421,9 +450,9 @@ export default function DashboardPage() {
               <UtensilsCrossed className="h-5 w-5 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-            {isLoadingResidents ? <Loader2 className="h-6 w-6 animate-spin text-primary my-1" /> : <div className="text-2xl font-bold font-body">{presentForFocusedMealCount}</div>}
+            {isLoadingResidents ? <Loader2 className="h-6 w-6 animate-spin text-primary my-1" /> : <div className="text-2xl font-bold font-body">{totalMealsToPrepare}</div>}
               <p className="text-xs text-muted-foreground font-body">
-                {isLoadingResidents ? "Calcul en cours..." : `Basé sur les résidents présents. ${dietSpecificMealsForFocusedMeal['Sans sel']} sans sel, ${dietSpecificMealsForFocusedMeal['Végétarien']} végé., ${dietSpecificMealsForFocusedMeal['Mixé']} mixés, ${dietSpecificMealsForFocusedMeal['Haché']} hachés.`}
+                {isLoadingResidents ? "Calcul en cours..." : `Inclut ${presentResidentsCountForFocusedMeal} résidents et ${totalGuestsForFocusedMeal} invités. Pour les résidents: ${dietSpecificMealsForFocusedMeal['Sans sel']} sans sel, ${dietSpecificMealsForFocusedMeal['Végétarien']} végé., ${dietSpecificMealsForFocusedMeal['Mixé']} mixés, ${dietSpecificMealsForFocusedMeal['Haché']} hachés.`}
               </p>
             </CardContent>
           </Card>
@@ -447,8 +476,8 @@ export default function DashboardPage() {
             <CardHeader>
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                   <div className="flex items-center gap-2">
-                      <ClipboardCheck className="h-6 w-6 text-primary" />
-                      <CardTitle className="font-headline">Total Textures à Préparer ({focusedMealText})</CardTitle>
+                      <UtensilsCrossed className="h-6 w-6 text-primary" />
+                      <CardTitle className="font-headline">Total Textures à Préparer ({focusedMealText} - Résidents)</CardTitle>
                   </div>
                   <form onSubmit={onFileUpload} className="flex items-center gap-2">
                       <Input
@@ -459,7 +488,7 @@ export default function DashboardPage() {
                   </form>
               </div>
               <CardDescription className="font-body mt-2">
-                Ce récapitulatif des textures est basé sur les résidents marqués comme présents pour le {focusedMealText.toLowerCase()}.
+                Ce récapitulatif des textures est basé sur les résidents marqués comme présents. Les repas des {totalGuestsForFocusedMeal > 0 ? `${totalGuestsForFocusedMeal} invité(s) sont ` : "invités sont "} généralement 'Normal' sauf indication dans les commentaires de réservation.
                 {importedFileName ? ( 
                   isDisplayingImportedMenuForFocusedMeal ? ( 
                     <> Les plats listés ci-dessous pour le {focusedMealText.toLowerCase()} proviennent de votre fichier Excel importé : <strong>{importedFileName}</strong>. Un fichier Excel peut contenir les menus du déjeuner et du dîner.</>
@@ -467,14 +496,14 @@ export default function DashboardPage() {
                     (() => {
                       const todayPlan = importedWeeklyPlan?.find(dayPlan => isToday(parseISO(dayPlan.date))); 
                       if (todayPlan) {
-                        return <> Le planning Excel (<strong>{importedFileName}</strong>) est chargé. Cependant, il ne contient pas de plats spécifiés pour le {focusedMealText.toLowerCase()} d'aujourd'hui dans ce fichier (vérifiez 'TypeRepas' et 'RolePlat'). Les plats affichés ci-dessous sont donc les plats par défaut. Un fichier Excel peut contenir les menus du déjeuner et du dîner.</>;
+                        return <> Le planning Excel (<strong>{importedFileName}</strong>) est chargé. Cependant, il ne contient pas de plats spécifiés pour le {focusedMealText.toLowerCase()} d'aujourd'hui dans ce fichier (vérifiez 'TypeRepas' et 'RolePlat'). Les plats affichés ci-dessous sont donc les plats par défaut.</>;
                       } else {
-                        return <> Le planning Excel (<strong>{importedFileName}</strong>) est chargé, mais aucun menu n'y est défini pour la date d'aujourd'hui. Les plats affichés ci-dessous sont donc les plats par défaut. Un fichier Excel peut contenir les menus du déjeuner et du dîner.</>;
+                        return <> Le planning Excel (<strong>{importedFileName}</strong>) est chargé, mais aucun menu n'y est défini pour la date d'aujourd'hui. Les plats affichés ci-dessous sont donc les plats par défaut.</>;
                       }
                     })()
                   )
                 ) : ( 
-                  <> Aucun planning Excel n'a été importé. Les plats affichés ci-dessous sont les plats par défaut. Un fichier Excel peut contenir les menus du déjeuner et du dîner.</>
+                  <> Aucun planning Excel n'a été importé. Les plats affichés ci-dessous sont les plats par défaut. Un fichier Excel peut contenir les menus pour le déjeuner et le dîner.</>
                 )}
                 {importedFileName && <Button variant="link" size="sm" className="p-0 h-auto text-xs ml-1" onClick={clearImportedPlan}>Effacer le planning importé</Button>}
               </CardDescription>
@@ -485,7 +514,7 @@ export default function DashboardPage() {
                       <Loader2 className="h-8 w-8 animate-spin text-primary" />
                       <p className="ml-2 font-body text-muted-foreground">Chargement des données de préparation...</p>
                   </div>
-              ) : presentForFocusedMealCount > 0 ? (
+              ) : presentResidentsCountForFocusedMeal > 0 ? (
                   <>
                       {ALL_PREPARATION_TYPES.map(prepType => {
                           const count = globalTextureCountsForFocusedMeal[prepType];
@@ -515,7 +544,7 @@ export default function DashboardPage() {
                               </div>
                           );
                       })}
-                      {Object.values(globalTextureCountsForFocusedMeal).every(c => c === 0) && presentForFocusedMealCount > 0 && (
+                      {Object.values(globalTextureCountsForFocusedMeal).every(c => c === 0) && presentResidentsCountForFocusedMeal > 0 && (
                            <p className="text-muted-foreground font-body text-center py-4">Aucune texture spécifique n'est requise pour les résidents présents, ou les données de texture sont manquantes.</p>
                       )}
                   </>

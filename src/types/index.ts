@@ -2,10 +2,9 @@
 export interface Resident {
   id: string;
   firstName: string;
-  lastName: string;
+  lastName:string;
   dateOfBirth?: string; 
   roomNumber?: string;
-  // dietaryRestrictions: string[]; // Déprécié, utiliser diets et textures
   allergies: string[];
   medicalSpecificities: string; 
   isActive: boolean; 
@@ -14,7 +13,7 @@ export interface Resident {
   contraindications: string[];
   textures: string[];
   diets: string[];
-  createdAt?: any; // Champ pour le timestamp Firestore, utile pour le tri ou l'affichage de l'ordre d'ajout
+  createdAt?: any; 
 }
 
 export interface Meal {
@@ -26,7 +25,7 @@ export interface Meal {
   allergenTags?: string[];
 }
 
-export type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
+export type MealType = 'lunch' | 'dinner' | 'snack'; // 'breakfast' removed previously
 
 export interface MenuItem {
   mealId: string;
@@ -56,25 +55,24 @@ export interface AttendanceRecord {
 export interface Notification {
   id:string;
   timestamp: string; // ISO date string
-  type: 'attendance' | 'absence' | 'outing' | 'allergy_alert' | 'emergency' | 'info' | 'attendance_reminder' | 'urgent_diet_request';
+  type: 'attendance' | 'absence' | 'outing' | 'allergy_alert' | 'emergency' | 'info' | 'attendance_reminder' | 'urgent_diet_request' | 'reservation_made';
   title: string;
   message: string;
   isRead: boolean;
   userIds?: string[];
-  relatedResidentId?: string;
+  relatedResidentId?: string; // Might be less relevant for reservations with manual name
 }
 
 export type UserRole = 'chef_gerant' | 'cuisinier' | 'soignant' | 'famille_invite' | null;
 
 export interface User {
-  id: string; // Pourrait être le PIN dans cette simulation, ou un ID généré
-  name: string; // Nom associé au rôle, ex: "Chef Gérant"
-  email?: string; // Optionnel pour un système basé sur PIN
+  id: string; 
+  name: string; 
+  email?: string; 
   role: UserRole;
   avatarUrl?: string;
 }
 
-// Pour la structure des plats dans le planning hebdomadaire
 export interface PlannedMealItem {
   name: string;
   category: Meal['category'];
@@ -83,72 +81,52 @@ export interface PlannedMealItem {
   description?: string;
 }
 
-// Pour la structure des repas (déjeuner/dîner) d'une journée dans le planning
 export interface DailyPlannedMeals {
   lunch: { main?: PlannedMealItem; dessert?: PlannedMealItem; starter?: PlannedMealItem };
   dinner: { main?: PlannedMealItem; dessert?: PlannedMealItem; starter?: PlannedMealItem };
 }
 
-// Pour la structure d'une journée dans le planning hebdomadaire (ce qui sera stocké/utilisé)
 export interface WeeklyDayPlan {
   date: string; // YYYY-MM-DD
-  dayOfWeek: string; // "Lundi", "Mardi", etc.
+  dayOfWeek: string; 
   meals: DailyPlannedMeals;
 }
 
-// Pour les données du formulaire de gestion des résidents
 export type ResidentFormData = Omit<Resident, 'id' | 'createdAt'>;
 
-// Pour le résumé par unité destiné aux cuisiniers
 export interface UnitSummary {
   unit: string;
   date: string; // YYYY-MM-DD
   items: Array<{
-    mealId: string; // ID du plat global
-    mealName: string; // Nom du plat global
+    mealId: string; 
+    mealName: string; 
     mealType: MealType;
-    totalCount: number; // Nombre total de ce plat pour l'unité
-    textures: Record<string, number>; // ex: { "Normal": 10, "Mixé": 2 }
-    diets: Record<string, number>; // ex: { "Sans Sel": 5, "Végétarien": 1 }
+    totalCount: number; 
+    textures: Record<string, number>; 
+    diets: Record<string, number>; 
   }>;
   notes?: string; 
 }
 
-// Pour les réservations de repas par les familles/AS
 export interface MealReservation {
-  id: string; // ID de la réservation
-  residentId: string;
-  residentName?: string; // Pour affichage facile
+  id: string; 
+  residentName: string; // Changed from residentId and optional residentName
   mealDate: string; // YYYY-MM-DD
   mealType: 'lunch' | 'dinner';
-  numberOfGuests: number; // Nombre d'invités EN PLUS du résident
+  numberOfGuests: number; 
   comments?: string;
-  reservedBy: string; // ID ou nom de l'utilisateur ayant fait la réservation
-  createdAt: any; // Firestore timestamp
+  reservedBy: string; 
+  createdAt: string; // ISO string for easier client-side handling/sorting
 }
 
 export interface MealReservationFormData {
-  residentId: string;
+  residentName: string; // Changed from residentId
   mealDate: Date;
   mealType: 'lunch' | 'dinner';
   numberOfGuests: number;
   comments?: string;
 }
 
-// // Pour la suggestion de menu par IA -- Removed in previous step
-// export interface MenuSuggestionInput {
-//   dietaryNeeds: string; 
-//   mealType: 'starter' | 'main' | 'dessert';
-//   preferences?: string; 
-// }
-
-// export interface MenuSuggestionOutput {
-//   suggestedDishName: string;
-//   description: string;
-//   reasoning?: string;
-// }
-
-// Pour le contexte d'authentification
 export interface AuthContextType {
   currentUser: User | null;
   login: (pin: string) => Promise<boolean>;
@@ -156,7 +134,6 @@ export interface AuthContextType {
   isLoading: boolean;
 }
 
-// Placeholder pour la page ai-menu-suggestion
 export default function AiMenuSuggestionPagePlaceholder() {
   return null;
 }

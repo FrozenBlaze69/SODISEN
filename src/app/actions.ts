@@ -3,7 +3,7 @@
 
 import { z } from 'zod';
 import * as XLSX from 'xlsx';
-import type { Meal, WeeklyDayPlan, PlannedMealItem, DailyPlannedMeals, MealReservationFormData } from '@/types';
+import type { WeeklyDayPlan, PlannedMealItem, MealReservationFormData, MealReservation } from '@/types';
 import { format, parseISO, isValid, parse } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
@@ -15,7 +15,7 @@ const ExcelDateStringSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, {
 // Schéma pour une ligne dans le fichier Excel de planning hebdomadaire
 const ExcelWeeklyPlanRowSchema = z.object({
   'Date': ExcelDateStringSchema,
-  'Jour': z.string().optional(), // Peut être dérivé de la Date
+  'Jour': z.string().optional(), 
   'TypeRepas': z.enum(['Déjeuner', 'Dîner'], { message: "TypeRepas doit être 'Déjeuner' ou 'Dîner'." }),
   'RolePlat': z.enum(['Principal', 'Dessert', 'Entree', 'Entrée'], { message: "RolePlat doit être 'Principal', 'Dessert' ou 'Entree/Entrée'." }),
   'NomPlat': z.string().min(1, { message: "Le nom du plat est requis." }),
@@ -40,7 +40,6 @@ function excelSerialDateToJSDate(serial: number) {
     const utc_days  = Math.floor(serial - 25569);
     const utc_value = utc_days * 86400;                                        
     const date_info = new Date(utc_value * 1000);
-    // Ajustement pour éviter les problèmes de fuseau horaire lors de la conversion simple
     return new Date(date_info.getUTCFullYear(), date_info.getUTCMonth(), date_info.getUTCDate());
 }
 
@@ -59,14 +58,12 @@ export async function handleMenuUpload(formData: FormData): Promise<FileUploadRe
   try {
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
-    // Forcer la lecture des dates comme des chaînes pour un traitement manuel plus fiable
     const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: false, dateNF: 'yyyy-mm-dd' }); 
     const sheetName = workbook.SheetNames[0];
     if (!sheetName) {
       return { success: false, message: 'Le fichier Excel est vide ou ne contient pas de feuilles.' };
     }
     const worksheet = workbook.Sheets[sheetName];
-    // Obtenir les données JSON brutes, les dates seront des chaînes ou des nombres
     const jsonData = XLSX.utils.sheet_to_json(worksheet, { raw: true }); 
 
     const weeklyPlans: Record<string, WeeklyDayPlan> = {};
@@ -76,49 +73,35 @@ export async function handleMenuUpload(formData: FormData): Promise<FileUploadRe
       let processedDateValue: any = row['Date'];
       let successfullyProcessedDateString: string | undefined = undefined;
 
-      if (typeof processedDateValue === 'number') { // Numéro de série Excel
+      if (typeof processedDateValue === 'number') { 
           const jsDate = excelSerialDateToJSDate(processedDateValue);
           if (isValid(jsDate)) {
             successfullyProcessedDateString = format(jsDate, 'yyyy-MM-dd');
           }
-      } else if (processedDateValue instanceof Date) { // Objet Date JS (moins probable avec raw:true, mais pour la robustesse)
+      } else if (processedDateValue instanceof Date) { 
           if (isValid(processedDateValue)) {
             successfullyProcessedDateString = format(processedDateValue, 'yyyy-MM-dd');
           }
       } else if (typeof processedDateValue === 'string') {
           let parsedDate: Date | undefined;
-          // Vérifier si c'est déjà YYYY-MM-DD
           if (/^\d{4}-\d{2}-\d{2}$/.test(processedDateValue)) {
             parsedDate = parseISO(processedDateValue);
           } else {
-            // Essayer de parser les formats courants avec des slashes
             if (processedDateValue.includes('/')) {
-                // Tentative DD/MM/YYYY (fréquent en France)
                 parsedDate = parse(processedDateValue, 'dd/MM/yyyy', new Date());
                 if (!isValid(parsedDate)) {
-                    // Tentative MM/DD/YYYY (fréquent aux US)
                     parsedDate = parse(processedDateValue, 'MM/dd/yyyy', new Date());
                 }
                  if (!isValid(parsedDate)) {
-                    // Tentative D/M/YYYY
                     parsedDate = parse(processedDateValue, 'd/M/yyyy', new Date());
                 }
                 if (!isValid(parsedDate)) {
-                    // Tentative M/D/YYYY
                     parsedDate = parse(processedDateValue, 'M/d/yyyy', new Date());
                 }
             }
-            // Fallback général pour d'autres formats de chaînes que `new Date()` pourrait comprendre
             if (!isValid(parsedDate)) {
                 const genericParsed = new Date(processedDateValue);
-                // `new Date()` peut retourner 'Invalid Date' ou une date incorrecte pour des formats ambigus.
-                // Une validation supplémentaire de la date est implicitement faite par `isValid` ci-dessous.
                 if (genericParsed.toString() !== 'Invalid Date') {
-                   // On vérifie si la date générée est "raisonnable" pour éviter des erreurs.
-                   // Par exemple, si Excel donne "Juin", new Date("Juin") peut donner 1er juin de l'année en cours.
-                   // Ici, on s'attend à une date complète.
-                   // Pour plus de robustesse, on pourrait vérifier si l'année, mois, jour sont plausibles.
-                   // Mais pour l'instant, on se fie à isValid après formatage.
                    parsedDate = genericParsed;
                 }
             }
@@ -127,34 +110,29 @@ export async function handleMenuUpload(formData: FormData): Promise<FileUploadRe
           if (parsedDate && isValid(parsedDate)) {
             successfullyProcessedDateString = format(parsedDate, 'yyyy-MM-dd');
           } else {
-             // Si la chaîne n'a pas pu être parsée en YYYY-MM-DD, on la laisse telle quelle
-             // pour que la validation Zod l'échoue si elle n'est pas déjà au bon format.
             successfullyProcessedDateString = processedDateValue;
           }
       }
       
-      // Remplacer la date dans la ligne par la date traitée pour la validation Zod
       const rowForValidation = { ...row, 'Date': successfullyProcessedDateString };
-
       const validationResult = ExcelWeeklyPlanRowSchema.safeParse(rowForValidation);
       
       if (validationResult.success) {
         const data = validationResult.data;
-        const dateStr = data.Date; // Garanti d'être YYYY-MM-DD par le schéma Zod
+        const dateStr = data.Date; 
         
         if (!weeklyPlans[dateStr]) {
           let dayOfWeek = data.Jour;
           if (!dayOfWeek) {
              try {
-                // Utiliser parseISO car dateStr est YYYY-MM-DD
                 dayOfWeek = format(parseISO(dateStr), 'EEEE', { locale: fr }); 
              } catch (e) {
                 errors.push(`Ligne ${index + 2}: Jour non fourni et date '${dateStr}' non parsable pour déduire le jour.`);
-                return; // Skip this row
+                return; 
              }
           }
           weeklyPlans[dateStr] = {
-            date: dateStr, // C'est bien la date au format YYYY-MM-DD
+            date: dateStr, 
             dayOfWeek: dayOfWeek.charAt(0).toUpperCase() + dayOfWeek.slice(1),
             meals: { lunch: {}, dinner: {} },
           };
@@ -227,10 +205,10 @@ export async function handleMenuUpload(formData: FormData): Promise<FileUploadRe
   }
 }
 
-// Schéma pour la réservation de repas
-const MealReservationFormSchema = z.object({
-  residentId: z.string().min(1, "Veuillez sélectionner un résident."),
-  mealDate: z.date({
+// Schéma pour la réservation de repas (mis à jour)
+const MealReservationServerSchema = z.object({
+  residentName: z.string().min(1, "Le nom du résident est requis."), // Changé de residentId
+  mealDate: z.date({ // Conservé en tant que Date, sera formaté avant "sauvegarde"
     required_error: "La date du repas est requise.",
     invalid_type_error: "Format de date invalide.",
   }),
@@ -242,12 +220,11 @@ const MealReservationFormSchema = z.object({
 });
 
 export async function handleMealReservation(
-  data: MealReservationFormData
-): Promise<{ success: boolean; message: string; reservationDetails?: any }> {
-  const validationResult = MealReservationFormSchema.safeParse(data);
+  data: MealReservationFormData // Le type du formulaire côté client, qui envoie une Date
+): Promise<{ success: boolean; message: string; reservationDetails?: MealReservation }> {
+  const validationResult = MealReservationServerSchema.safeParse(data);
 
   if (!validationResult.success) {
-    // Formatage des erreurs pour être plus lisible
     const formattedErrors = Object.entries(validationResult.error.flatten().fieldErrors)
       .map(([field, errors]) => `${field}: ${errors?.join(', ')}`)
       .join('\n');
@@ -257,32 +234,29 @@ export async function handleMealReservation(
     };
   }
 
-  const { residentId, mealDate, mealType, numberOfGuests, comments } = validationResult.data;
+  const { residentName, mealDate, mealType, numberOfGuests, comments } = validationResult.data;
 
-  // TODO: Remplacer par une vraie sauvegarde Firestore
-  // Pour l'instant, on simule la sauvegarde et on logue les données
-  const reservationDetailsToSave = {
-    residentId,
-    mealDate: format(mealDate, 'yyyy-MM-dd'), // Formater la date pour la sauvegarde/log
+  // Simulation de la sauvegarde Firestore
+  // Dans un cas réel, vous utiliseriez un ID unique généré par Firestore ou un UUID.
+  const reservationId = `resa_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  const reservationDetailsToSave: MealReservation = {
+    id: reservationId,
+    residentName,
+    mealDate: format(mealDate, 'yyyy-MM-dd'),
     mealType,
     numberOfGuests,
     comments: comments || '',
     reservedBy: "CURRENT_USER_PLACEHOLDER", // À remplacer par l'ID/nom de l'utilisateur connecté
-    createdAt: new Date().toISOString(), // Simuler un timestamp
+    createdAt: new Date().toISOString(), 
   };
 
-  console.log("Tentative de sauvegarde de la réservation :", reservationDetailsToSave);
-
-  // Simulation d'une sauvegarde réussie
-  // Dans un cas réel, vous appelleriez ici une fonction pour écrire dans Firestore
-  // et vous géreriez les erreurs potentielles de cette écriture.
-
-  // const reservationId = await saveReservationToFirestore(reservationDetailsToSave);
+  console.log("Simulation de sauvegarde de la réservation :", reservationDetailsToSave);
+  // Ici, dans une vraie app, on sauvegarderait dans Firestore.
+  // Pour cette simulation, la "sauvegarde" est implicite et réussit toujours.
 
   return {
     success: true,
-    message: `Réservation pour ${numberOfGuests} invité(s) le ${format(mealDate, 'dd/MM/yyyy')} (${mealType === 'lunch' ? 'Déjeuner' : 'Dîner'}) enregistrée avec succès.`,
-    reservationDetails: reservationDetailsToSave,
+    message: `Réservation pour ${residentName} et ${numberOfGuests} invité(s) le ${format(mealDate, 'dd/MM/yyyy')} (${mealType === 'lunch' ? 'Déjeuner' : 'Dîner'}) enregistrée avec succès.`,
+    reservationDetails: reservationDetailsToSave, // Retourner les détails complets avec ID et createdAt
   };
 }
-

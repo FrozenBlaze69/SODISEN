@@ -1,67 +1,78 @@
 
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useForm, SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { format, addDays, startOfDay } from 'date-fns';
+import { format, addDays, startOfDay, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
 import { AppLayout } from '@/components/layout/app-layout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { CalendarIcon, Send, Loader2, Users } from 'lucide-react';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { CalendarIcon, Send, Loader2, Users, Trash2, BellRing } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from "@/hooks/use-toast";
-import type { MealReservationFormData, Resident } from '@/types'; // Assurez-vous que Resident est importé
-import { handleMealReservation } from '@/app/actions'; // Assurez-vous que le chemin est correct
+import type { MealReservationFormData, MealReservation, Notification } from '@/types';
+import { handleMealReservation } from '@/app/actions';
+
+const LOCAL_STORAGE_RESERVATIONS_KEY = 'mealReservations';
+const SHARED_NOTIFICATIONS_KEY = 'sharedAppNotifications';
 
 // Schéma de validation Zod pour le formulaire de réservation
 const reservationFormSchema = z.object({
-  residentId: z.string().min(1, { message: "Veuillez sélectionner un résident." }),
+  residentName: z.string().min(2, { message: "Le nom du résident/personne est requis (minimum 2 caractères)." }),
   mealDate: z.date({
     required_error: "La date du repas est requise.",
     invalid_type_error: "Format de date invalide.",
   }).refine(date => date >= startOfDay(new Date()), {
     message: "La date ne peut pas être dans le passé."
-  }).refine(date => date <= addDays(startOfDay(new Date()), 7), {
-    message: "La réservation ne peut pas excéder 7 jours à l'avance."
+  }).refine(date => date <= addDays(startOfDay(new Date()), 30), { // Étendu à 30 jours
+    message: "La réservation ne peut pas excéder 30 jours à l'avance."
   }),
   mealType: z.enum(['lunch', 'dinner'], {
     required_error: "Le type de repas est requis.",
   }),
   numberOfGuests: z.coerce
     .number({invalid_type_error: "Veuillez entrer un nombre."})
-    .min(0, { message: "Le nombre d'invités doit être positif ou nul." })
+    .min(0, { message: "Le nombre d'invités doit être positif ou nul (0 si seul le résident mange)." })
     .int({ message: "Le nombre d'invités doit être un nombre entier." }),
   comments: z.string().optional(),
 });
 
 type ReservationFormValues = z.infer<typeof reservationFormSchema>;
 
-// Mock data pour les résidents (à remplacer par une récupération de données réelles)
-const mockResidents: Pick<Resident, 'id' | 'firstName' | 'lastName' | 'unit'>[] = [
-  { id: '1', firstName: 'Jean', lastName: 'Dupont', unit: 'Unité A' },
-  { id: '2', firstName: 'Aline', lastName: 'Martin', unit: 'Unité B' },
-  { id: '3', firstName: 'Pierre', lastName: 'Durand', unit: 'Unité A' },
-];
-
-
 export default function MealReservationPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [reservationsList, setReservationsList] = useState<MealReservation[]>([]);
+  const [clientSideRendered, setClientSideRendered] = useState(false);
   const { toast } = useToast();
+
+  useEffect(() => {
+    setClientSideRendered(true);
+    try {
+      const storedReservations = localStorage.getItem(LOCAL_STORAGE_RESERVATIONS_KEY);
+      if (storedReservations) {
+        setReservationsList(JSON.parse(storedReservations).sort((a:MealReservation, b:MealReservation) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+      }
+    } catch (error) {
+      console.error("Error loading reservations from localStorage:", error);
+      setReservationsList([]);
+    }
+  }, []);
 
   const form = useForm<ReservationFormValues>({
     resolver: zodResolver(reservationFormSchema),
     defaultValues: {
-      residentId: '',
+      residentName: '',
       mealDate: undefined,
       mealType: undefined,
       numberOfGuests: 0,
@@ -73,11 +84,40 @@ export default function MealReservationPage() {
     setIsSubmitting(true);
     try {
       const result = await handleMealReservation(data);
-      if (result.success) {
+      if (result.success && result.reservationDetails) {
+        const newReservation = result.reservationDetails;
         toast({
           title: "Réservation enregistrée",
           description: result.message,
         });
+
+        // Add to local list and update localStorage for reservations
+        const updatedReservations = [newReservation, ...reservationsList].sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        setReservationsList(updatedReservations);
+        if (clientSideRendered) {
+          localStorage.setItem(LOCAL_STORAGE_RESERVATIONS_KEY, JSON.stringify(updatedReservations));
+        }
+        
+        // Create and save notification
+        const newNotification: Notification = {
+            id: `notif-resa-${Date.now()}`,
+            timestamp: new Date().toISOString(),
+            type: 'reservation_made', 
+            title: 'Nouvelle Réservation Repas',
+            message: `${newReservation.residentName} a une réservation pour ${newReservation.numberOfGuests} invité(s) le ${format(parseISO(newReservation.mealDate), 'dd/MM/yyyy')} (${newReservation.mealType === 'lunch' ? 'Déjeuner' : 'Dîner'}).`,
+            isRead: false,
+        };
+
+        if (clientSideRendered) {
+            try {
+                const existingNotificationsRaw = localStorage.getItem(SHARED_NOTIFICATIONS_KEY);
+                let allNotifications: Notification[] = existingNotificationsRaw ? JSON.parse(existingNotificationsRaw) : [];
+                allNotifications = [newNotification, ...allNotifications];
+                localStorage.setItem(SHARED_NOTIFICATIONS_KEY, JSON.stringify(allNotifications));
+            } catch (e) {
+                console.error("Error saving new reservation notification to localStorage", e);
+            }
+        }
         form.reset();
       } else {
         toast({
@@ -98,18 +138,29 @@ export default function MealReservationPage() {
     }
   };
 
+  const handleDeleteReservation = (reservationId: string) => {
+    if (window.confirm("Êtes-vous sûr de vouloir supprimer cette réservation ?")) {
+        const updatedReservations = reservationsList.filter(r => r.id !== reservationId);
+        setReservationsList(updatedReservations);
+        if (clientSideRendered) {
+            localStorage.setItem(LOCAL_STORAGE_RESERVATIONS_KEY, JSON.stringify(updatedReservations));
+        }
+        toast({title: "Réservation supprimée", description: "La réservation a été retirée de la liste."});
+    }
+  }
+
   return (
     <AppLayout>
-      <div className="space-y-8 max-w-2xl mx-auto">
+      <div className="space-y-8">
         <h1 className="text-3xl font-headline font-semibold text-foreground">
           Réservation de Repas Invités
         </h1>
 
-        <Card>
+        <Card className="max-w-2xl mx-auto">
           <CardHeader>
             <CardTitle className="font-headline flex items-center gap-2">
               <Users className="h-6 w-6 text-primary" />
-              Nouvelle Réservation (7 jours à l'avance maximum)
+              Nouvelle Réservation (30 jours à l'avance maximum)
             </CardTitle>
             <CardDescription className="font-body">
               Veuillez remplir le formulaire ci-dessous pour réserver des repas pour un résident et ses invités.
@@ -120,24 +171,13 @@ export default function MealReservationPage() {
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 font-body">
                 <FormField
                   control={form.control}
-                  name="residentId"
+                  name="residentName"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Résident concerné</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value} disabled={isSubmitting}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Sélectionner un résident" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {mockResidents.map(resident => (
-                            <SelectItem key={resident.id} value={resident.id}>
-                              {resident.lastName}, {resident.firstName} ({resident.unit})
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <FormLabel>Nom du Résident / Personne concernée</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Ex: Mme Dupont et famille" {...field} disabled={isSubmitting} />
+                      </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -175,7 +215,7 @@ export default function MealReservationPage() {
                             selected={field.value}
                             onSelect={field.onChange}
                             disabled={(date) =>
-                              date < startOfDay(new Date()) || date > addDays(startOfDay(new Date()), 7)
+                              date < startOfDay(new Date()) || date > addDays(startOfDay(new Date()), 30)
                             }
                             initialFocus
                             locale={fr}
@@ -183,7 +223,7 @@ export default function MealReservationPage() {
                         </PopoverContent>
                       </Popover>
                       <FormDescription>
-                        Vous pouvez réserver jusqu'à 7 jours à l'avance.
+                        Vous pouvez réserver jusqu'à 30 jours à l'avance.
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
@@ -222,7 +262,7 @@ export default function MealReservationPage() {
                         <Input type="number" placeholder="0" {...field} onChange={event => field.onChange(+event.target.value)} disabled={isSubmitting} />
                       </FormControl>
                       <FormDescription>
-                        Si seul le résident mange et qu'il n'y a pas d'invité supplémentaire, laissez à 0.
+                        Si seul le résident mange (pas d'invité supplémentaire), laissez à 0.
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
@@ -264,6 +304,64 @@ export default function MealReservationPage() {
               </form>
             </Form>
           </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="font-headline flex items-center gap-2">
+                <BellRing className="h-6 w-6 text-primary"/>
+                Liste des Réservations Enregistrées
+            </CardTitle>
+            <CardDescription className="font-body">
+                Visualisez ici les réservations de repas pour les invités.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {clientSideRendered && reservationsList.length === 0 ? (
+                <p className="text-muted-foreground font-body text-center py-4">Aucune réservation enregistrée pour le moment.</p>
+            ) : !clientSideRendered ? (
+                 <div className="flex justify-center items-center py-10">
+                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                    <p className="ml-2 font-body text-muted-foreground">Chargement des réservations...</p>
+                </div>
+            ) : (
+                <div className="overflow-x-auto">
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead className="font-headline">Nom</TableHead>
+                                <TableHead className="font-headline">Date Repas</TableHead>
+                                <TableHead className="font-headline">Type</TableHead>
+                                <TableHead className="text-center font-headline">Nb. Invités</TableHead>
+                                <TableHead className="font-headline">Commentaires</TableHead>
+                                <TableHead className="font-headline">Réservé le</TableHead>
+                                <TableHead className="text-right font-headline">Actions</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {reservationsList.map(resa => (
+                                <TableRow key={resa.id} className="font-body">
+                                    <TableCell className="font-medium">{resa.residentName}</TableCell>
+                                    <TableCell>{format(parseISO(resa.mealDate), "dd/MM/yyyy", { locale: fr })}</TableCell>
+                                    <TableCell>{resa.mealType === 'lunch' ? 'Déjeuner' : 'Dîner'}</TableCell>
+                                    <TableCell className="text-center">{resa.numberOfGuests}</TableCell>
+                                    <TableCell className="max-w-[200px] truncate">{resa.comments || '-'}</TableCell>
+                                    <TableCell>{format(parseISO(resa.createdAt), "dd/MM/yy HH:mm", { locale: fr })}</TableCell>
+                                    <TableCell className="text-right">
+                                        <Button variant="ghost" size="icon" onClick={() => handleDeleteReservation(resa.id)} aria-label="Supprimer la réservation">
+                                            <Trash2 className="h-4 w-4 text-destructive"/>
+                                        </Button>
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                </div>
+            )}
+          </CardContent>
+           <CardFooter>
+             <p className="text-xs text-muted-foreground font-body">Les réservations sont stockées localement dans le navigateur.</p>
+           </CardFooter>
         </Card>
       </div>
     </AppLayout>
