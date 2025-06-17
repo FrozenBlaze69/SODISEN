@@ -22,9 +22,9 @@ import { CalendarIcon, Send, Loader2, Users, Trash2, BellRing } from 'lucide-rea
 import { cn } from '@/lib/utils';
 import { useToast } from "@/hooks/use-toast";
 import type { MealReservationFormData, MealReservation, Notification } from '@/types';
-import { handleMealReservation } from '@/app/actions';
+import { handleMealReservation, deleteReservationFromFirestore } from '@/app/actions';
+import { onReservationsUpdate } from '@/lib/firebase/firestoreClientService'; // Import the listener
 
-const LOCAL_STORAGE_RESERVATIONS_KEY = 'mealReservations';
 const SHARED_NOTIFICATIONS_KEY = 'sharedAppNotifications';
 
 const reservationFormSchema = z.object({
@@ -49,36 +49,38 @@ const reservationFormSchema = z.object({
 
 type ReservationFormValues = z.infer<typeof reservationFormSchema>;
 
+// Data structure for server action (mealDate as string)
 type ServerActionReservationData = Omit<ReservationFormValues, 'mealDate'> & {
   mealDate: string;
 };
 
 export default function MealReservationPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoadingReservations, setIsLoadingReservations] = useState(true);
   const [reservationsList, setReservationsList] = useState<MealReservation[]>([]);
   const [clientSideRendered, setClientSideRendered] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
     setClientSideRendered(true);
-    try {
-      const storedReservationsRaw = localStorage.getItem(LOCAL_STORAGE_RESERVATIONS_KEY);
-      if (storedReservationsRaw) {
-        const parsedReservations = JSON.parse(storedReservationsRaw) as MealReservation[];
-        // Sort by creation date, newest first
-        setReservationsList(parsedReservations.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
-      } else {
-        setReservationsList([]); // Initialize to empty if nothing stored
+    setIsLoadingReservations(true);
+    const unsubscribe = onReservationsUpdate(
+      (updatedReservations) => {
+        setReservationsList(updatedReservations);
+        setIsLoadingReservations(false);
+      },
+      (error) => {
+        console.error("Failed to listen to reservations:", error);
+        toast({
+          variant: "destructive",
+          title: "Erreur de chargement",
+          description: "Impossible de charger les réservations depuis la base de données. Vérifiez les règles Firestore.",
+        });
+        setIsLoadingReservations(false);
+        setReservationsList([]);
       }
-    } catch (error) {
-      console.error("Error loading reservations from localStorage:", error);
-      toast({
-        variant: "destructive",
-        title: "Erreur de chargement",
-        description: "Impossible de charger les réservations sauvegardées.",
-      });
-      setReservationsList([]); // Fallback to empty list
-    }
+    );
+    return () => unsubscribe(); // Cleanup listener on component unmount
   }, [toast]);
 
 
@@ -104,32 +106,13 @@ export default function MealReservationPage() {
       const result = await handleMealReservation(serverActionData);
       
       if (result.success && result.reservationDetails) {
-        const newReservation = result.reservationDetails;
-        
-        // Update state and localStorage
-        setReservationsList(prevList => {
-          const updatedList = [newReservation, ...prevList].sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-          if (clientSideRendered) {
-            try {
-              localStorage.setItem(LOCAL_STORAGE_RESERVATIONS_KEY, JSON.stringify(updatedList));
-            } catch (lsError) {
-                console.error("Error saving new reservation to localStorage:", lsError);
-                 toast({
-                  variant: "destructive",
-                  title: "Erreur de sauvegarde locale (Nouvelle Réservation)",
-                  description: "La réservation a été envoyée, mais n'a pas pu être sauvegardée localement. Elle pourrait ne pas persister après rafraîchissement.",
-                });
-            }
-          }
-          return updatedList;
-        });
-
+        // The list will update via the Firestore listener, so no need to manually update state here.
         toast({
           title: "Réservation enregistrée",
           description: result.message,
         });
 
-        // Create and store notification
+        // Create and store notification in localStorage
         if (clientSideRendered) {
             try {
                 const newNotification: Notification = {
@@ -137,12 +120,12 @@ export default function MealReservationPage() {
                     timestamp: new Date().toISOString(),
                     type: 'reservation_made', 
                     title: 'Nouvelle Réservation Repas',
-                    message: `${newReservation.residentName} a une réservation pour ${newReservation.numberOfGuests} invité(s) le ${formatDateFn(parseISO(newReservation.mealDate), 'dd/MM/yyyy', { locale: fr })} (${newReservation.mealType === 'lunch' ? 'Déjeuner' : 'Dîner'}).`,
+                    message: `${result.reservationDetails.residentName} a une réservation pour ${result.reservationDetails.numberOfGuests} invité(s) le ${formatDateFn(parseISO(result.reservationDetails.mealDate), 'dd/MM/yyyy', { locale: fr })} (${result.reservationDetails.mealType === 'lunch' ? 'Déjeuner' : 'Dîner'}).`,
                     isRead: false,
                 };
                 const existingNotificationsRaw = localStorage.getItem(SHARED_NOTIFICATIONS_KEY);
                 let allNotifications: Notification[] = existingNotificationsRaw ? JSON.parse(existingNotificationsRaw) : [];
-                allNotifications = [newNotification, ...allNotifications];
+                allNotifications = [newNotification, ...allNotifications]; // Add to the beginning
                 localStorage.setItem(SHARED_NOTIFICATIONS_KEY, JSON.stringify(allNotifications));
             } catch (notifError) {
                 console.error("Error saving reservation notification to localStorage:", notifError);
@@ -176,44 +159,28 @@ export default function MealReservationPage() {
     }
   };
 
- const handleDeleteReservation = (reservationId: string) => {
-    if (!clientSideRendered) {
-      toast({ variant: "destructive", title: "Erreur", description: "L'application n'est pas prête pour cette action." });
+ const handleDeleteReservation = async (reservationId: string) => {
+    if (!clientSideRendered || !reservationId) {
+      toast({ variant: "destructive", title: "Erreur", description: "Impossible de traiter la demande de suppression." });
       return;
     }
 
     if (window.confirm(`Êtes-vous sûr de vouloir supprimer cette réservation (ID: ${reservationId}) ? Cette action est irréversible.`)) {
-      let reservationFound = false;
-      const updatedReservations = reservationsList.filter(r => {
-        if (r.id === reservationId) {
-          reservationFound = true;
-          return false; // Exclude this reservation
-        }
-        return true; // Keep other reservations
-      });
-
-      if (reservationFound) {
-        try {
-          localStorage.setItem(LOCAL_STORAGE_RESERVATIONS_KEY, JSON.stringify(updatedReservations));
-          // Update state only if localStorage was successful
-          setReservationsList(updatedReservations); 
-          toast({ title: "Réservation supprimée", description: "La réservation a été retirée de la liste et sauvegardée." });
-        } catch (error) {
-          console.error("Erreur sauvegarde localStorage après suppression:", error);
-          toast({
-            variant: "destructive",
-            title: "Erreur Sauvegarde Locale",
-            description: "La suppression n'a pas pu être sauvegardée localement. La modification pourrait ne pas persister.",
-          });
-          // Do NOT update setReservationsList here, so the UI reflects the persistence failure
-        }
+      setIsSubmitting(true); // Indicate processing for delete as well
+      const result = await deleteReservationFromFirestore(reservationId);
+      if (result.success) {
+        // List will update via Firestore listener
+        toast({ title: "Réservation supprimée", description: result.message });
       } else {
-        // No item was removed, meaning the ID wasn't found in the current state
-        toast({ variant: "default", title: "Information", description: "Réservation non trouvée ou déjà supprimée de la vue actuelle." });
+        toast({
+          variant: "destructive",
+          title: "Échec de la suppression",
+          description: result.message || "Une erreur est survenue lors de la suppression.",
+        });
       }
+      setIsSubmitting(false);
     }
   };
-
 
   return (
     <AppLayout>
@@ -229,7 +196,7 @@ export default function MealReservationPage() {
               Nouvelle Réservation (30 jours à l'avance maximum)
             </CardTitle>
             <CardDescription className="font-body">
-              Veuillez remplir le formulaire ci-dessous pour réserver des repas pour un résident et ses invités.
+              Veuillez remplir le formulaire ci-dessous pour réserver des repas pour un résident et ses invités. Les réservations sont sauvegardées en base de données.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -354,7 +321,7 @@ export default function MealReservationPage() {
                   )}
                 />
                 
-                <Button type="submit" className="w-full sm:w-auto" disabled={isSubmitting}>
+                <Button type="submit" className="w-full sm:w-auto" disabled={isSubmitting || isLoadingReservations}>
                   {isSubmitting ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -379,14 +346,19 @@ export default function MealReservationPage() {
                 Liste des Réservations Enregistrées
             </CardTitle>
             <CardDescription className="font-body">
-                Visualisez ici les réservations de repas pour les invités.
+                Visualisez ici les réservations de repas pour les invités, récupérées depuis la base de données.
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {!clientSideRendered ? (
+            {isLoadingReservations && clientSideRendered ? (
                  <div className="flex justify-center items-center py-10">
                     <Loader2 className="h-8 w-8 animate-spin text-primary" />
                     <p className="ml-2 font-body text-muted-foreground">Chargement des réservations...</p>
+                </div>
+            ) : !clientSideRendered && !isLoadingReservations ? ( // Initial server render or if loading is somehow false before client render
+                 <div className="flex justify-center items-center py-10">
+                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                    <p className="ml-2 font-body text-muted-foreground">Initialisation...</p>
                 </div>
             ) : reservationsList.length === 0 ? (
                 <p className="text-muted-foreground font-body text-center py-4">Aucune réservation enregistrée pour le moment.</p>
@@ -419,7 +391,7 @@ export default function MealReservationPage() {
                                             size="icon" 
                                             onClick={() => handleDeleteReservation(resa.id)} 
                                             aria-label="Supprimer la réservation"
-                                            disabled={!clientSideRendered || isSubmitting} 
+                                            disabled={!clientSideRendered || isSubmitting || isLoadingReservations} 
                                         >
                                             <Trash2 className="h-4 w-4 text-destructive"/>
                                         </Button>
@@ -432,7 +404,7 @@ export default function MealReservationPage() {
             )}
           </CardContent>
            <CardFooter>
-             <p className="text-xs text-muted-foreground font-body">Les réservations sont stockées localement dans le navigateur.</p>
+             <p className="text-xs text-muted-foreground font-body">Les réservations sont désormais stockées et lues depuis la base de données Firestore.</p>
            </CardFooter>
         </Card>
       </div>

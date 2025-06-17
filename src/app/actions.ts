@@ -3,16 +3,17 @@
 
 import { z } from 'zod';
 import * as XLSX from 'xlsx';
-import type { WeeklyDayPlan, PlannedMealItem, MealReservation } from '@/types'; // MealReservationFormData (client form type) n'est plus directement utilisé comme type de paramètre ici
+import type { WeeklyDayPlan, PlannedMealItem, MealReservation } from '@/types';
 import { format, parseISO, isValid, parse } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { db } from '@/lib/firebase/config';
+import { collection, addDoc, serverTimestamp, deleteDoc, doc } from "firebase/firestore";
+import { RESERVATIONS_COLLECTION } from '@/lib/firebase/constants';
 
-// Schéma Zod pour une date au format YYYY-MM-DD
 const ExcelDateStringSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, { 
   message: "La date doit être au format YYYY-MM-DD après la conversion interne." 
 });
 
-// Schéma pour une ligne dans le fichier Excel de planning hebdomadaire
 const ExcelWeeklyPlanRowSchema = z.object({
   'Date': ExcelDateStringSchema,
   'Jour': z.string().optional(), 
@@ -24,7 +25,6 @@ const ExcelWeeklyPlanRowSchema = z.object({
   'TagsAllergene': z.string().optional(),
   'DescriptionPlat': z.string().optional(),
 });
-
 
 const FileUploadResponseSchema = z.object({
   success: z.boolean(),
@@ -42,7 +42,6 @@ function excelSerialDateToJSDate(serial: number) {
     const date_info = new Date(utc_value * 1000);
     return new Date(date_info.getUTCFullYear(), date_info.getUTCMonth(), date_info.getUTCDate());
 }
-
 
 export async function handleMenuUpload(formData: FormData): Promise<FileUploadResponse> {
   const file = formData.get('menuFile') as File;
@@ -205,7 +204,6 @@ export async function handleMenuUpload(formData: FormData): Promise<FileUploadRe
   }
 }
 
-// Schéma Zod pour les données reçues par l'action serveur (mealDate est une chaîne 'yyyy-MM-dd')
 const MealReservationServerSchema = z.object({
   residentName: z.string().min(1, "Le nom du résident est requis."),
   mealDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "La date doit être au format AAAA-MM-JJ."),
@@ -216,11 +214,10 @@ const MealReservationServerSchema = z.object({
   comments: z.string().optional(),
 });
 
-// Type pour les données que cette action serveur attend
 type ServerActionReservationData = z.infer<typeof MealReservationServerSchema>;
 
 export async function handleMealReservation(
-  data: ServerActionReservationData // Le type de paramètre correspond maintenant à ce que le client envoie
+  data: ServerActionReservationData
 ): Promise<{ success: boolean; message: string; reservationDetails?: MealReservation }> {
   const validationResult = MealReservationServerSchema.safeParse(data);
 
@@ -234,35 +231,68 @@ export async function handleMealReservation(
     };
   }
 
-  // mealDate est maintenant une chaîne 'yyyy-MM-dd'
   const { residentName, mealDate, mealType, numberOfGuests, comments } = validationResult.data;
 
-  const reservationId = `resa_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-  const reservationDetailsToSave: MealReservation = {
-    id: reservationId,
-    residentName,
-    mealDate: mealDate, // mealDate est déjà une chaîne 'yyyy-MM-dd'
-    mealType,
-    numberOfGuests,
-    comments: comments || '',
-    reservedBy: "CURRENT_USER_PLACEHOLDER", 
-    createdAt: new Date().toISOString(), 
-  };
-
-  console.log("Simulation de sauvegarde de la réservation :", reservationDetailsToSave);
-
-  // Pour le message de succès, il faut parser la chaîne mealDate pour la reformater.
-  let displayDate = mealDate;
   try {
-    displayDate = format(parseISO(mealDate), 'dd/MM/yyyy', { locale: fr });
-  } catch (e) {
-    console.error("Error parsing mealDate for display:", e);
-    // Garder la date au format AAAA-MM-JJ si le parsing échoue
-  }
+    const reservationDataToSave = {
+      residentName,
+      mealDate, // This is already 'YYYY-MM-DD' string
+      mealType,
+      numberOfGuests,
+      comments: comments || '',
+      reservedBy: "CURRENT_USER_PLACEHOLDER", // Replace with actual user in a real auth system
+      createdAt: serverTimestamp(), // Firestore server timestamp
+    };
 
-  return {
-    success: true,
-    message: `Réservation pour ${residentName} et ${numberOfGuests} invité(s) le ${displayDate} (${mealType === 'lunch' ? 'Déjeuner' : 'Dîner'}) enregistrée avec succès.`,
-    reservationDetails: reservationDetailsToSave,
-  };
+    const docRef = await addDoc(collection(db, RESERVATIONS_COLLECTION), reservationDataToSave);
+    
+    // For the response, we need to simulate what the structure would be like with an ISO string for createdAt
+    // In a real scenario, you might fetch the doc again, but for now, a client-side generated date is fine for the immediate response
+    // The listener will get the actual Firestore timestamp converted.
+    const nowISO = new Date().toISOString();
+
+    let displayDate = mealDate;
+    try {
+      displayDate = format(parseISO(mealDate), 'dd/MM/yyyy', { locale: fr });
+    } catch (e) {
+      console.error("Error parsing mealDate for display in success message:", e);
+    }
+    
+    return {
+      success: true,
+      message: `Réservation pour ${residentName} et ${numberOfGuests} invité(s) le ${displayDate} (${mealType === 'lunch' ? 'Déjeuner' : 'Dîner'}) enregistrée avec succès dans la base de données.`,
+      reservationDetails: {
+        id: docRef.id,
+        ...validationResult.data, // Use validated data
+        comments: validationResult.data.comments || '',
+        reservedBy: "CURRENT_USER_PLACEHOLDER",
+        createdAt: nowISO, // Temporary, listener will provide actual
+      },
+    };
+
+  } catch (error) {
+    console.error("Error saving reservation to Firestore: ", error);
+    let errorMessage = "Erreur lors de la sauvegarde de la réservation dans la base de données.";
+    if (error instanceof Error) {
+        errorMessage += ` Détail: ${error.message}. Vérifiez les règles de sécurité Firestore pour la collection '${RESERVATIONS_COLLECTION}'.`;
+    }
+    return { success: false, message: errorMessage };
+  }
+}
+
+export async function deleteReservationFromFirestore(reservationId: string): Promise<{ success: boolean; message: string }> {
+  if (!reservationId) {
+    return { success: false, message: "ID de réservation manquant." };
+  }
+  try {
+    await deleteDoc(doc(db, RESERVATIONS_COLLECTION, reservationId));
+    return { success: true, message: "Réservation supprimée avec succès de la base de données." };
+  } catch (error) {
+    console.error("Error deleting reservation from Firestore: ", error);
+    let errorMessage = "Erreur lors de la suppression de la réservation de la base de données.";
+     if (error instanceof Error) {
+        errorMessage += ` Détail: ${error.message}.`;
+    }
+    return { success: false, message: errorMessage };
+  }
 }

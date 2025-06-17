@@ -25,7 +25,7 @@ export interface Meal {
   allergenTags?: string[];
 }
 
-export type MealType = 'lunch' | 'dinner' | 'snack'; // 'breakfast' removed previously
+export type MealType = 'lunch' | 'dinner' | 'snack';
 
 export interface MenuItem {
   mealId: string;
@@ -60,7 +60,7 @@ export interface Notification {
   message: string;
   isRead: boolean;
   userIds?: string[];
-  relatedResidentId?: string; // Might be less relevant for reservations with manual name
+  relatedResidentId?: string;
 }
 
 export type UserRole = 'chef_gerant' | 'cuisinier' | 'soignant' | 'famille_invite' | null;
@@ -108,20 +108,23 @@ export interface UnitSummary {
   notes?: string; 
 }
 
+// MealReservation now reflects data as stored in Firestore (id will be Firestore doc ID)
+// createdAt will be a Firestore Timestamp server-side, converted to ISO string for client
 export interface MealReservation {
   id: string; 
-  residentName: string; // Changed from residentId and optional residentName
+  residentName: string; 
   mealDate: string; // YYYY-MM-DD
   mealType: 'lunch' | 'dinner';
   numberOfGuests: number; 
   comments?: string;
-  reservedBy: string; 
-  createdAt: string; // ISO string for easier client-side handling/sorting
+  reservedBy: string; // Placeholder for user who made reservation, can be enhanced later
+  createdAt: string; // ISO string on client, from Firestore Timestamp
 }
 
+// FormData for the client-side form
 export interface MealReservationFormData {
-  residentName: string; // Changed from residentId
-  mealDate: Date;
+  residentName: string;
+  mealDate: Date; // Client uses Date object for picker
   mealType: 'lunch' | 'dinner';
   numberOfGuests: number;
   comments?: string;

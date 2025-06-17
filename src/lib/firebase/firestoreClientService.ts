@@ -1,13 +1,9 @@
 
 import { db } from './config';
-import { collection, onSnapshot, query, orderBy } from "firebase/firestore";
-import type { Resident } from '@/types';
-import { RESIDENTS_COLLECTION } from './constants'; // Import the constant
+import { collection, onSnapshot, query, orderBy, Timestamp } from "firebase/firestore";
+import type { Resident, MealReservation } from '@/types';
+import { RESIDENTS_COLLECTION, RESERVATIONS_COLLECTION } from './constants';
 
-// --- SECTION POUR LES DONNÉES FICTIVES D'APERÇU ---
-// Ces données ne sont utilisées que si la collection 'residents' dans Firestore est vide.
-// Elles permettent d'avoir un aperçu de l'application avec des données.
-// Dès que de vrais résidents sont ajoutés à Firestore, ces données fictives ne sont plus utilisées.
 const mockResidentsForPreview: Resident[] = [
   {
     id: 'mockres-1',
@@ -160,17 +156,15 @@ const mockResidentsForPreview: Resident[] = [
     isActive: true,
   },
 ];
-// --- FIN SECTION POUR LES DONNÉES FICTIVES D'APERÇU ---
 
-
-// This function is for the client, so no 'use server' here.
-// It establishes a real-time listener.
-export function onResidentsUpdate(callback: (residents: Resident[]) => void): () => void {
-  const q = query(collection(db, RESIDENTS_COLLECTION), orderBy("lastName", "asc")); // Tri par nom de famille
+export function onResidentsUpdate(
+  callback: (residents: Resident[]) => void,
+  onError?: (error: Error) => void
+): () => void {
+  const q = query(collection(db, RESIDENTS_COLLECTION), orderBy("lastName", "asc"));
   
   const unsubscribe = onSnapshot(q, (querySnapshot) => {
-    if (querySnapshot.empty) {
-      // Si la base de données est vide, utiliser les données fictives pour l'aperçu
+    if (querySnapshot.empty && !querySnapshot.metadata.hasPendingWrites) {
       console.log("Firestore 'residents' collection is empty. Using mock data for preview.");
       callback(mockResidentsForPreview);
       return;
@@ -190,19 +184,56 @@ export function onResidentsUpdate(callback: (residents: Resident[]) => void): ()
         contraindications: data.contraindications || [],
         textures: data.textures || [],
         diets: data.diets || [],
-        dateOfBirth: data.dateOfBirth, // Sera une chaîne YYYY-MM-DD si stocké ainsi, ou à convertir si Timestamp
+        dateOfBirth: data.dateOfBirth, 
         roomNumber: data.roomNumber,
         avatarUrl: data.avatarUrl,
-        createdAt: data.createdAt, // Pourrait être un Timestamp Firestore, à gérer côté client si besoin de formater
+        createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : data.createdAt,
       });
     });
     callback(residentsList);
   }, (error) => {
     console.error("Error listening to residents collection: ", error);
-    // En cas d'erreur (ex: règles de sécurité), on pourrait aussi renvoyer les mocks pour que l'UI ne soit pas vide
-    // Mais il est préférable de résoudre l'erreur Firestore. Pour l'instant, on ne fait rien de plus que logguer.
-    // callback(mockResidentsForPreview); // Optionnel: utiliser les mocks en cas d'erreur de lecture
+    if (onError) {
+      onError(error);
+    }
+    // Fallback to mock data if there's an error (e.g. permission denied)
+    // This helps in development if Firestore rules are not set up yet.
+    callback(mockResidentsForPreview);
   });
 
-  return unsubscribe; // Returns the function to unsubscribe
+  return unsubscribe;
+}
+
+export function onReservationsUpdate(
+  callback: (reservations: MealReservation[]) => void,
+  onError?: (error: Error) => void
+): () => void {
+  const q = query(collection(db, RESERVATIONS_COLLECTION), orderBy("createdAt", "desc"));
+
+  const unsubscribe = onSnapshot(q, (querySnapshot) => {
+    const reservationsList: MealReservation[] = [];
+    querySnapshot.forEach((doc) => {
+      const data = doc.data();
+      reservationsList.push({
+        id: doc.id,
+        residentName: data.residentName || "N/A",
+        mealDate: data.mealDate, // Should be YYYY-MM-DD string
+        mealType: data.mealType,
+        numberOfGuests: data.numberOfGuests || 0,
+        comments: data.comments || "",
+        reservedBy: data.reservedBy || "System",
+        createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : data.createdAt,
+      });
+    });
+    callback(reservationsList);
+  }, (error) => {
+    console.error("Error listening to reservations collection: ", error);
+    if (onError) {
+      onError(error);
+    }
+    // If there's an error, provide an empty list rather than mock data for reservations.
+    callback([]);
+  });
+
+  return unsubscribe;
 }

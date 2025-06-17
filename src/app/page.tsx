@@ -14,6 +14,7 @@ import { useToast } from "@/hooks/use-toast";
 import { handleMenuUpload } from './actions';
 import { format, parseISO, isToday } from 'date-fns';
 import { onResidentsUpdate } from '@/lib/firebase/firestoreClientService';
+import { onReservationsUpdate } from '@/lib/firebase/firestoreClientService'; // Import the listener
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 
@@ -21,7 +22,7 @@ export const todayISO = new Date().toISOString().split('T')[0];
 const LOCAL_STORAGE_ATTENDANCE_KEY_PREFIX = 'simulatedDailyAttendance_';
 const SHARED_NOTIFICATIONS_KEY = 'sharedAppNotifications'; 
 const LOCAL_STORAGE_WEEKLY_PLAN_FILE_NAME_KEY = 'currentWeeklyPlanFileName';
-const LOCAL_STORAGE_RESERVATIONS_KEY = 'mealReservations';
+// const LOCAL_STORAGE_RESERVATIONS_KEY = 'mealReservations'; // No longer used
 
 const LUNCH_HOUR_THRESHOLD = 14; // Switch to dinner view at 2 PM
 
@@ -90,6 +91,7 @@ export default function DashboardPage() {
   const [clientSideRendered, setClientSideRendered] = useState(false);
   const [dailyAttendanceRecords, setDailyAttendanceRecords] = useState<AttendanceRecord[]>([]);
   const [allReservations, setAllReservations] = useState<MealReservation[]>([]);
+  const [isLoadingReservations, setIsLoadingReservations] = useState(true);
   const [dashboardNotifications, setDashboardNotifications] = useState<Notification[]>(initialMockNotificationsForDashboard);
   const [currentMealFocus, setCurrentMealFocus] = useState<MealType>('lunch');
   const [currentTime, setCurrentTime] = useState<string | null>(null);
@@ -113,7 +115,7 @@ export default function DashboardPage() {
   const currentAttendanceKey = `${LOCAL_STORAGE_ATTENDANCE_KEY_PREFIX}${todayISO}`;
 
   useEffect(() => {
-    setClientSideRendered(true); // Important: must be first thing in useEffect
+    setClientSideRendered(true);
     
     const storedPlan = localStorage.getItem('currentWeeklyPlan');
     if (storedPlan) {
@@ -141,17 +143,23 @@ export default function DashboardPage() {
       setDailyAttendanceRecords(mockAttendanceFallback); 
     }
 
-    try {
-        const storedReservations = localStorage.getItem(LOCAL_STORAGE_RESERVATIONS_KEY);
-        if (storedReservations) {
-            setAllReservations(JSON.parse(storedReservations));
-        } else {
-            setAllReservations([]);
-        }
-    } catch (e) {
-        console.error("Error reading reservations from localStorage for dashboard", e);
+    setIsLoadingReservations(true);
+    const unsubscribeReservations = onReservationsUpdate(
+      (updatedReservations) => {
+        setAllReservations(updatedReservations);
+        setIsLoadingReservations(false);
+      },
+      (error) => {
+        console.error("Dashboard: Failed to listen to reservations:", error);
+        toast({
+          variant: "destructive",
+          title: "Erreur (Réservations)",
+          description: "Impossible de charger les réservations. Les totaux pourraient être incorrects.",
+        });
+        setIsLoadingReservations(false);
         setAllReservations([]);
-    }
+      }
+    );
 
     try {
         const storedNotificationsRaw = localStorage.getItem(SHARED_NOTIFICATIONS_KEY);
@@ -159,16 +167,14 @@ export default function DashboardPage() {
             const loadedNotifications: Notification[] = JSON.parse(storedNotificationsRaw);
             if (loadedNotifications.length > 0) {
                  setDashboardNotifications(loadedNotifications.sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
-            } // else, keep initialMockNotificationsForDashboard
-        } // else, keep initialMockNotificationsForDashboard
+            }
+        }
     } catch (error) {
         console.error("Error loading notifications from localStorage for dashboard:", error);
-        // keep initialMockNotificationsForDashboard
     }
 
-
     setIsLoadingResidents(true);
-    const unsubscribe = onResidentsUpdate((updatedResidents) => {
+    const unsubscribeResidents = onResidentsUpdate((updatedResidents) => {
       setAllResidents(updatedResidents);
       setIsLoadingResidents(false);
     }, (error) => {
@@ -182,7 +188,10 @@ export default function DashboardPage() {
         setAllResidents([]); 
         setIsLoadingResidents(false);
     });
-    return () => unsubscribe();
+    return () => {
+      unsubscribeResidents();
+      unsubscribeReservations();
+    };
 
   }, [currentAttendanceKey, toast]); 
 
@@ -222,22 +231,20 @@ export default function DashboardPage() {
   }, [activeResidents, dailyAttendanceRecords, currentMealFocus]);
 
   const totalGuestsForFocusedMeal = useMemo(() => {
-    if (!clientSideRendered) return 0;
+    if (!clientSideRendered || isLoadingReservations) return 0; // Wait for client and data
     return allReservations
       .filter(res => res.mealDate === todayISO && res.mealType === currentMealFocus)
       .reduce((sum, res) => sum + res.numberOfGuests, 0);
-  }, [allReservations, currentMealFocus, clientSideRendered]);
+  }, [allReservations, currentMealFocus, clientSideRendered, isLoadingReservations]);
   
-  // Nombre de "couverts résidents" = nombre de résidents pour qui il y a une réservation et qui n'ont pas d'invités (numberOfGuests === 0).
-  // Cela évite de double-compter un résident si son repas est déjà implicite dans "presentAttendancesForFocusedMeal"
-  // mais si la réservation est pour le résident lui-même (sans invité), il faut l'ajouter s'il n'est pas déjà compté comme "présent".
-  // Pour l'instant, la logique la plus simple : total repas = présents (via feuille présence) + nb d'invités (via réservations).
-  // Si une réservation concerne juste le résident SANS invité, elle ne change pas le total car il est soit déjà présent, soit absent.
-  // Si un résident est absent mais a des invités, les invités sont comptés.
 
   const totalActiveResidentsCount = activeResidents.length;
   const presentResidentsCountForFocusedMeal = presentAttendancesForFocusedMeal.length;
-  const totalMealsToPrepare = presentResidentsCountForFocusedMeal + totalGuestsForFocusedMeal;
+  
+  const totalMealsToPrepare = useMemo(() => {
+    if (isLoadingResidents || isLoadingReservations) return 0; // Show 0 or a loader text while loading
+    return presentResidentsCountForFocusedMeal + totalGuestsForFocusedMeal;
+  }, [isLoadingResidents, isLoadingReservations, presentResidentsCountForFocusedMeal, totalGuestsForFocusedMeal]);
 
 
   const dietSpecificMealsForFocusedMeal = useMemo(() => {
@@ -380,7 +387,9 @@ export default function DashboardPage() {
 
   const focusedMealText = currentMealFocus === 'lunch' ? 'Déjeuner' : 'Dîner';
 
-  if (isLoadingResidents && !clientSideRendered) { 
+  const overallLoading = isLoadingResidents || isLoadingReservations;
+
+  if (overallLoading && !clientSideRendered) { 
     return (
       <AppLayout>
         <div className="flex h-[calc(100vh-var(--header-height)-2rem)] items-center justify-center">
@@ -439,7 +448,7 @@ export default function DashboardPage() {
             <CardContent>
               {isLoadingResidents ? <Loader2 className="h-6 w-6 animate-spin text-primary my-1" /> : <div className="text-2xl font-bold font-body">{totalActiveResidentsCount}</div>}
               <p className="text-xs text-muted-foreground font-body">
-                {isLoadingResidents ? "Chargement..." : `${presentResidentsCountForFocusedMeal} résidents présents et ${totalGuestsForFocusedMeal} invités pour le ${focusedMealText.toLowerCase()} aujourd'hui.`}
+                {isLoadingResidents || isLoadingReservations ? "Calcul en cours..." : `${presentResidentsCountForFocusedMeal} résidents présents et ${totalGuestsForFocusedMeal} invités pour le ${focusedMealText.toLowerCase()} aujourd'hui.`}
               </p>
             </CardContent>
           </Card>
@@ -450,9 +459,9 @@ export default function DashboardPage() {
               <UtensilsCrossed className="h-5 w-5 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-            {isLoadingResidents ? <Loader2 className="h-6 w-6 animate-spin text-primary my-1" /> : <div className="text-2xl font-bold font-body">{totalMealsToPrepare}</div>}
+            {overallLoading ? <Loader2 className="h-6 w-6 animate-spin text-primary my-1" /> : <div className="text-2xl font-bold font-body">{totalMealsToPrepare}</div>}
               <p className="text-xs text-muted-foreground font-body">
-                {isLoadingResidents ? "Calcul en cours..." : `Inclut ${presentResidentsCountForFocusedMeal} résidents et ${totalGuestsForFocusedMeal} invités. Pour les résidents: ${dietSpecificMealsForFocusedMeal['Sans sel']} sans sel, ${dietSpecificMealsForFocusedMeal['Végétarien']} végé., ${dietSpecificMealsForFocusedMeal['Mixé']} mixés, ${dietSpecificMealsForFocusedMeal['Haché']} hachés.`}
+                {overallLoading ? "Calcul en cours..." : `Inclut ${presentResidentsCountForFocusedMeal} résidents et ${totalGuestsForFocusedMeal} invités. Pour les résidents: ${dietSpecificMealsForFocusedMeal['Sans sel']} sans sel, ${dietSpecificMealsForFocusedMeal['Végétarien']} végé., ${dietSpecificMealsForFocusedMeal['Mixé']} mixés, ${dietSpecificMealsForFocusedMeal['Haché']} hachés.`}
               </p>
             </CardContent>
           </Card>
