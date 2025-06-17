@@ -75,7 +75,7 @@ export default function NotificationsPage() {
       }
     );
     return () => unsubscribe();
-  }, [toast]);
+  }, []); // Changed dependency array from [toast] to []
 
   const updateReadNotificationIdsInStorage = (newReadIds: Set<string>) => {
     try {
@@ -115,12 +115,11 @@ export default function NotificationsPage() {
         const timeA = new Date(a.timestamp).getTime();
         const timeB = new Date(b.timestamp).getTime();
         
-        // Handle NaN cases robustly: put invalid dates at the end (or beginning)
-        if (isNaN(timeA) && isNaN(timeB)) return 0; // Both invalid, treat as equal
-        if (isNaN(timeA)) return 1;  // a is invalid, sort b before a (b comes first)
-        if (isNaN(timeB)) return -1; // b is invalid, sort a before b (a comes first)
+        if (isNaN(timeA) && isNaN(timeB)) return 0;
+        if (isNaN(timeA)) return 1; 
+        if (isNaN(timeB)) return -1; 
         
-        return timeB - timeA; // Sort by timestamp descending (newest first)
+        return timeB - timeA; 
       });
   }, [allNotifications, readNotificationIds]);
 
@@ -147,7 +146,7 @@ export default function NotificationsPage() {
     setIsDeleting(true);
     try {
       await Promise.all(readNotifsToDelete.map(n => deleteSharedNotificationFromFirestore(n.id)));
-      // Remove from local read set as well
+      
       const remainingReadIds = new Set(readNotificationIds);
       readNotifsToDelete.forEach(n => remainingReadIds.delete(n.id));
       setReadNotificationIds(remainingReadIds);
@@ -174,7 +173,7 @@ export default function NotificationsPage() {
 
       await addSharedNotificationToFirestore(newNotificationData);
       form.reset();
-      // Toast for success will be triggered by GlobalNotificationListener if the notification is "new" to it
+      
     } catch (error) {
       console.error("Error sending custom notification:", error);
       toast({ variant: "destructive", title: "Erreur d'envoi", description: `Impossible d'envoyer la notification. ${error instanceof Error ? error.message : ''}` });
@@ -322,3 +321,4 @@ export default function NotificationsPage() {
     </AppLayout>
   );
 }
+
