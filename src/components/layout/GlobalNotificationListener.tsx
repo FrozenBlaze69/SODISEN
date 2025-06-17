@@ -6,61 +6,80 @@ import { onSharedNotificationsUpdate } from '@/lib/firebase/firestoreClientServi
 import { useToast } from "@/hooks/use-toast";
 import type { Notification } from '@/types';
 
+const PROCESSED_NOTIF_IDS_SESSION_KEY = 'processedSharedNotificationIdsSodisenApp';
+
+// Helper to get initial set from session storage
+const getInitialProcessedIds = (): Set<string> => {
+  if (typeof window !== 'undefined') {
+    try {
+      const storedIds = sessionStorage.getItem(PROCESSED_NOTIF_IDS_SESSION_KEY);
+      if (storedIds) {
+        return new Set(JSON.parse(storedIds));
+      }
+    } catch (e) {
+      console.error("Error parsing processedNotificationIds from sessionStorage:", e);
+      // If parsing fails, clear the invalid item and return an empty set
+      sessionStorage.removeItem(PROCESSED_NOTIF_IDS_SESSION_KEY);
+      return new Set();
+    }
+  }
+  return new Set();
+};
+
 export function GlobalNotificationListener() {
   const { toast } = useToast();
-  const lastProcessedNotificationTimestampRef = useRef<string | null>(null);
+  // useRef to hold the set, initialized from sessionStorage to persist across component re-mounts within a session
+  const processedNotificationIdsRef = useRef<Set<string>>(getInitialProcessedIds());
 
   useEffect(() => {
     const unsubscribe = onSharedNotificationsUpdate(
-      (allNotifications, newNotificationsBatch) => {
-        // This listener is for real-time "ding" and toast for new notifications.
-        // It processes notifications that were added since the listener was attached,
-        // or more robustly, those newer than the last one processed.
+      (allNotifications, newNotificationsBatch) => { // newNotificationsBatch should contain only genuinely new notifications
         
-        let latestTimestampInBatch = lastProcessedNotificationTimestampRef.current;
-
+        let newIdsAddedToSessionStorage = false;
         newNotificationsBatch.forEach((notif) => {
-          // Basic check to avoid re-processing if onSnapshot sends duplicates or on initial load
-          // A more robust way would be to compare with a local "last seen timestamp" or IDs
-          if (!lastProcessedNotificationTimestampRef.current || new Date(notif.timestamp) > new Date(lastProcessedNotificationTimestampRef.current)) {
+          // Check if this notification ID has already been processed in this session
+          if (!processedNotificationIdsRef.current.has(notif.id)) {
             
-            // Only toast/sound for notifications that are genuinely new since last check
-            // This condition might need refinement based on how `newNotificationsBatch` is constructed
-            // For now, we assume newNotificationsBatch contains truly new items for this client instance.
-            if (new Date(notif.timestamp).getTime() > (Date.now() - 60000)) { // Process if within last minute
-                toast({
-                    title: notif.title,
-                    description: notif.message,
-                });
-                try {
-                    const audio = new Audio('/sounds/notification.mp3');
-                    audio.play().catch(error => console.warn("GlobalNotificationListener: Audio play failed:", error));
-                } catch (e) {
-                    console.warn("GlobalNotificationListener: Audio object creation failed:", e);
-                }
+            const notificationDate = new Date(notif.timestamp);
+            const now = new Date();
+            // Only play sound/toast if notification is very recent (e.g., < 2 minutes old)
+            // This prevents a barrage of sounds if many "new" (to this session, e.g. after reconnect) older notifications arrive
+            if (now.getTime() - notificationDate.getTime() < 120000) { // 120000ms = 2 minutes
+              toast({
+                  title: notif.title,
+                  description: notif.message,
+              });
+              try {
+                  const audio = new Audio('/sounds/notification.mp3');
+                  audio.play().catch(error => console.warn("GlobalNotificationListener: Audio play failed:", error));
+              } catch (e) {
+                  console.warn("GlobalNotificationListener: Audio object creation failed:", e);
+              }
             }
-          }
-          if (!latestTimestampInBatch || new Date(notif.timestamp) > new Date(latestTimestampInBatch)) {
-            latestTimestampInBatch = notif.timestamp;
+            // Add to processed set and mark that we need to update sessionStorage
+            processedNotificationIdsRef.current.add(notif.id);
+            newIdsAddedToSessionStorage = true;
           }
         });
 
-        if (latestTimestampInBatch) {
-            lastProcessedNotificationTimestampRef.current = latestTimestampInBatch;
+        // If new IDs were processed, update sessionStorage
+        if (newIdsAddedToSessionStorage && typeof window !== 'undefined') {
+          try {
+            sessionStorage.setItem(PROCESSED_NOTIF_IDS_SESSION_KEY, JSON.stringify(Array.from(processedNotificationIdsRef.current)));
+          } catch (e) {
+            console.error("Error saving processedNotificationIds to sessionStorage:", e);
+          }
         }
-
       },
       (error) => {
         console.error("GlobalNotificationListener: Error listening to shared notifications:", error);
-        // Optionally, inform the user about the issue if it's critical for notifications
-        // toast({ variant: "destructive", title: "Erreur Notifications", description: "Connexion aux notifications en temps réel perdue." });
       }
     );
 
     return () => {
       unsubscribe();
     };
-  }, [toast]);
+  }, [toast]); // toast is a stable dependency from useToast hook
 
   return null; // This component does not render anything itself
 }
