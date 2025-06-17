@@ -68,12 +68,18 @@ const translateMealLocation = (location: MealLocation): string => {
 
 const getUnitColorClass = (unitName: string | undefined): string => {
   const name = (unitName || 'Non assignée').toLowerCase();
-  if (name.includes('bleue')) return 'bg-blue-100 border-blue-200 text-blue-800 hover:bg-blue-200/80';
-  if (name.includes('verte')) return 'bg-green-100 border-green-200 text-green-800 hover:bg-green-200/80';
-  if (name.includes('rouge')) return 'bg-red-100 border-red-200 text-red-800 hover:bg-red-200/80';
-  if (name.includes('orange')) return 'bg-orange-100 border-orange-200 text-orange-800 hover:bg-orange-200/80';
-  if (name.includes('jaune')) return 'bg-yellow-100 border-yellow-200 text-yellow-800 hover:bg-yellow-200/80';
-  return 'bg-slate-100 border-slate-200 text-slate-800 hover:bg-slate-200/80'; // Default color
+
+  if (name.includes('bleu') || name.includes('mer') || name.includes('océan') || name.includes('rivière')) return 'bg-blue-100 border-blue-300 text-blue-800 hover:bg-blue-200/80';
+  if (name.includes('lavande') || name.includes('violet') || name.includes('aurore') || name.includes('lilas') || name.includes('améthyste')) return 'bg-purple-100 border-purple-300 text-purple-800 hover:bg-purple-200/80';
+  if (name.includes('vert') || name.includes('forêt') || name.includes('jardin') || name.includes('prairie') || name.includes('émeraude')) return 'bg-green-100 border-green-300 text-green-800 hover:bg-green-200/80';
+  if (name.includes('jaune') || name.includes('soleil') || name.includes('lumière') || name.includes('mimosa') || name.includes('citron')) return 'bg-yellow-100 border-yellow-300 text-yellow-800 hover:bg-yellow-200/80';
+  if (name.includes('orange') || name.includes('coucher') || name.includes('automne') || name.includes('mandarine') || name.includes('abricot')) return 'bg-orange-100 border-orange-300 text-orange-800 hover:bg-orange-200/80';
+  if (name.includes('rose') || name.includes('fleur') || name.includes('corail') || name.includes('pivoine')) return 'bg-pink-100 border-pink-300 text-pink-800 hover:bg-pink-200/80';
+  if (name.includes('rouge') || name.includes('passion') || name.includes('volcan') || name.includes('rubis') || name.includes('coquelicot')) return 'bg-red-100 border-red-300 text-red-800 hover:bg-red-200/80';
+  
+  if (name.includes('non assignée')) return 'bg-slate-100 border-slate-300 text-slate-800 hover:bg-slate-200/80';
+  
+  return 'bg-gray-100 border-gray-300 text-gray-800 hover:bg-gray-200/80'; // Fallback for other names
 };
 
 
@@ -156,7 +162,11 @@ export default function AttendancePage() {
   }, [residents]);
 
   const sortedUnitNames = useMemo(() => {
-    return Object.keys(groupedResidentsByUnit).sort((a, b) => a.localeCompare(b));
+    return Object.keys(groupedResidentsByUnit).sort((a, b) => {
+      if (a === 'Non assignée') return 1; // Always sort "Non assignée" to the end
+      if (b === 'Non assignée') return -1;
+      return a.localeCompare(b);
+    });
   }, [groupedResidentsByUnit]);
 
 
@@ -340,7 +350,7 @@ export default function AttendancePage() {
           <CardHeader>
             <CardTitle className="font-headline">Grille des Présences du {new Date(TODAY_ISO).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}</CardTitle>
             <CardDescription className="font-body">
-              Modifiez les présences et cliquez sur "Enregistrer Présences". Les résidents sont groupés par unité. Les notes générales sont partagées pour tous les repas du résident pour ce jour.
+              Modifiez les présences et cliquez sur "Enregistrer Présences". Les résidents sont groupés par unité avec des couleurs distinctes. Les notes générales sont partagées pour tous les repas du résident pour ce jour.
             </CardDescription>
           </CardHeader>
           <CardContent>
