@@ -158,24 +158,40 @@ export default function MealReservationPage() {
   };
 
  const handleDeleteReservation = async (reservationId: string) => {
-    if (!clientSideRendered || !reservationId) {
-      toast({ variant: "destructive", title: "Erreur", description: "Impossible de traiter la demande de suppression." });
+    if (!clientSideRendered) {
+      toast({ variant: "destructive", title: "Erreur", description: "Opération non disponible pour le moment." });
       return;
+    }
+    if (!reservationId) {
+        toast({ variant: "destructive", title: "Erreur", description: "ID de réservation manquant pour la suppression." });
+        return;
     }
 
     if (window.confirm(`Êtes-vous sûr de vouloir supprimer cette réservation (ID: ${reservationId}) ? Cette action est irréversible.`)) {
-      setIsSubmitting(true); 
-      const result = await deleteReservationFromFirestore(reservationId);
-      if (result.success) {
-        toast({ title: "Réservation supprimée", description: result.message });
-      } else {
+      setIsSubmitting(true);
+      try {
+        const result = await deleteReservationFromFirestore(reservationId);
+        if (result.success) {
+          toast({ title: "Réservation supprimée", description: result.message });
+          // La mise à jour de la liste est gérée par l'écouteur onReservationsUpdate 
+          // qui réagit aux changements dans Firestore.
+        } else {
+          toast({
+            variant: "destructive",
+            title: "Échec de la suppression",
+            description: result.message || "Une erreur est survenue lors de la suppression de la réservation de la base de données.",
+          });
+        }
+      } catch (error) {
+        console.error("Erreur côté client lors de l'appel à deleteReservationFromFirestore:", error);
         toast({
           variant: "destructive",
-          title: "Échec de la suppression",
-          description: result.message || "Une erreur est survenue lors de la suppression.",
+          title: "Erreur Client",
+          description: `Une erreur s'est produite lors de la tentative de suppression. ${error instanceof Error ? error.message : ''}`,
         });
+      } finally {
+        setIsSubmitting(false);
       }
-      setIsSubmitting(false);
     }
   };
 
@@ -193,7 +209,7 @@ export default function MealReservationPage() {
               Nouvelle Réservation (30 jours à l'avance maximum)
             </CardTitle>
             <CardDescription className="font-body">
-              Veuillez remplir le formulaire ci-dessous pour réserver des repas pour un résident et ses invités. Les réservations sont sauvegardées en base de données.
+              Veuillez remplir le formulaire ci-dessous pour réserver des repas pour un résident et ses invités. Les réservations sont sauvegardées en base de données et la liste est mise à jour en temps réel.
             </CardDescription>
           </CardHeader>
           <CardContent>
