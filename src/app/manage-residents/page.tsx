@@ -16,6 +16,16 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Trash2, UserPlus, Edit, Loader2, RotateCcw, Users } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import type { Resident, ResidentFormData } from '@/types';
 import { onResidentsUpdate } from '@/lib/firebase/firestoreClientService';
 import { addOrUpdateResident, deleteResidentFromFirestore } from '@/lib/firebase/firestoreService';
@@ -32,16 +42,15 @@ const residentFormSchema = z.object({
   dateOfBirth: z.string().optional(),
   avatarUrl: z.string().url({ message: "Veuillez entrer une URL valide pour l'avatar." }).optional().or(z.literal('')),
   medicalSpecificities: z.string().optional(),
-  diets: z.string().optional(), // Sera transformé en array
-  textures: z.string().optional(), // Sera transformé en array
-  allergies: z.string().optional(), // Sera transformé en array
-  contraindications: z.string().optional(), // Sera transformé en array
+  diets: z.string().optional(), 
+  textures: z.string().optional(), 
+  allergies: z.string().optional(), 
+  contraindications: z.string().optional(), 
   isActive: z.boolean().default(true),
 });
 
 type ResidentFormValues = z.infer<typeof residentFormSchema>;
 
-// Valeurs par défaut pour un nouveau résident
 const defaultFormValues: ResidentFormValues = {
   firstName: '',
   lastName: '',
@@ -60,9 +69,12 @@ const defaultFormValues: ResidentFormValues = {
 export default function ManageResidentsPage() {
   const [residents, setResidents] = useState<Resident[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSubmittingForm, setIsSubmittingForm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [editingResident, setEditingResident] = useState<Resident | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [isDeleteResidentDialogOpen, setIsDeleteResidentDialogOpen] = useState(false);
+  const [residentToDelete, setResidentToDelete] = useState<{ id: string; name: string } | null>(null);
   
   const { toast } = useToast();
 
@@ -91,7 +103,7 @@ export default function ManageResidentsPage() {
   };
 
   const onSubmit: SubmitHandler<ResidentFormValues> = async (data) => {
-    setIsSubmitting(true);
+    setIsSubmittingForm(true);
     startTransition(async () => {
       const residentDataToSave: ResidentFormData = {
         ...data,
@@ -111,7 +123,7 @@ export default function ManageResidentsPage() {
         console.error("Failed to save resident: ", error);
         toast({ title: "Erreur", description: `Impossible de ${editingResident ? 'mettre à jour' : 'd\'ajouter'} le résident. ${error instanceof Error ? error.message : ''}`, variant: "destructive" });
       } finally {
-        setIsSubmitting(false);
+        setIsSubmittingForm(false);
       }
     });
   };
@@ -139,23 +151,32 @@ export default function ManageResidentsPage() {
     setEditingResident(null);
     form.reset(defaultFormValues);
   };
+  
+  const openDeleteResidentDialog = (residentId: string, residentName: string) => {
+    setResidentToDelete({ id: residentId, name: residentName });
+    setIsDeleteResidentDialogOpen(true);
+  };
 
-  const handleDeleteResident = async (residentId: string, residentName: string) => {
-    if (window.confirm(`Êtes-vous sûr de vouloir supprimer ${residentName} ? Cette action est irréversible.`)) {
-      setIsSubmitting(true); // Peut-être un autre indicateur pour la suppression
-      try {
-        await deleteResidentFromFirestore(residentId);
-        toast({ title: "Succès", description: `${residentName} a été supprimé.` });
-        if (editingResident?.id === residentId) {
-          handleCancelEdit();
-        }
-      } catch (error) {
-        console.error("Failed to delete resident: ", error);
-        toast({ title: "Erreur", description: `Impossible de supprimer ${residentName}.`, variant: "destructive" });
+  const confirmDeleteResident = async () => {
+    if (!residentToDelete) return;
+
+    setIsDeleting(true);
+    try {
+      await deleteResidentFromFirestore(residentToDelete.id);
+      toast({ title: "Succès", description: `${residentToDelete.name} a été supprimé.` });
+      if (editingResident?.id === residentToDelete.id) {
+        handleCancelEdit();
       }
-      setIsSubmitting(false);
+    } catch (error) {
+      console.error("Failed to delete resident: ", error);
+      toast({ title: "Erreur", description: `Impossible de supprimer ${residentToDelete.name}. ${error instanceof Error ? error.message : ''}`, variant: "destructive" });
+    } finally {
+      setIsDeleting(false);
+      setIsDeleteResidentDialogOpen(false);
+      setResidentToDelete(null);
     }
   };
+
 
   return (
     <AppLayout>
@@ -171,7 +192,7 @@ export default function ManageResidentsPage() {
               Informations du Résident
             </CardTitle>
             {editingResident && (
-                <Button variant="outline" size="sm" onClick={handleCancelEdit} className="font-body max-w-fit">
+                <Button variant="outline" size="sm" onClick={handleCancelEdit} className="font-body max-w-fit" disabled={isSubmittingForm || isPending || isDeleting}>
                     <RotateCcw className="mr-2 h-4 w-4" />
                     Annuler la modification (créer nouveau)
                 </Button>
@@ -184,42 +205,42 @@ export default function ManageResidentsPage() {
                   <FormField control={form.control} name="firstName" render={({ field }) => (
                     <FormItem>
                       <FormLabel>Prénom</FormLabel>
-                      <FormControl><Input placeholder="Jean" {...field} disabled={isSubmitting || isPending} /></FormControl>
+                      <FormControl><Input placeholder="Jean" {...field} disabled={isSubmittingForm || isPending || isDeleting} /></FormControl>
                       <FormMessage />
                     </FormItem>
                   )} />
                   <FormField control={form.control} name="lastName" render={({ field }) => (
                     <FormItem>
                       <FormLabel>Nom</FormLabel>
-                      <FormControl><Input placeholder="Dupont" {...field} disabled={isSubmitting || isPending} /></FormControl>
+                      <FormControl><Input placeholder="Dupont" {...field} disabled={isSubmittingForm || isPending || isDeleting} /></FormControl>
                       <FormMessage />
                     </FormItem>
                   )} />
                   <FormField control={form.control} name="unit" render={({ field }) => (
                     <FormItem>
                       <FormLabel>Unité</FormLabel>
-                      <FormControl><Input placeholder="Unité A" {...field} disabled={isSubmitting || isPending} /></FormControl>
+                      <FormControl><Input placeholder="Unité A" {...field} disabled={isSubmittingForm || isPending || isDeleting} /></FormControl>
                       <FormMessage />
                     </FormItem>
                   )} />
                   <FormField control={form.control} name="roomNumber" render={({ field }) => (
                     <FormItem>
                       <FormLabel>Numéro de Chambre</FormLabel>
-                      <FormControl><Input placeholder="101A" {...field} disabled={isSubmitting || isPending} /></FormControl>
+                      <FormControl><Input placeholder="101A" {...field} disabled={isSubmittingForm || isPending || isDeleting} /></FormControl>
                       <FormMessage />
                     </FormItem>
                   )} />
                    <FormField control={form.control} name="dateOfBirth" render={({ field }) => (
                     <FormItem>
                       <FormLabel>Date de Naissance (JJ/MM/AAAA)</FormLabel>
-                      <FormControl><Input placeholder="01/01/1940" {...field} disabled={isSubmitting || isPending} /></FormControl>
+                      <FormControl><Input placeholder="01/01/1940" {...field} disabled={isSubmittingForm || isPending || isDeleting} /></FormControl>
                       <FormMessage />
                     </FormItem>
                   )} />
                   <FormField control={form.control} name="avatarUrl" render={({ field }) => (
                     <FormItem>
                       <FormLabel>URL de l'Avatar (optionnel)</FormLabel>
-                      <FormControl><Input placeholder="https://example.com/avatar.png" {...field} disabled={isSubmitting || isPending} /></FormControl>
+                      <FormControl><Input placeholder="https://example.com/avatar.png" {...field} disabled={isSubmittingForm || isPending || isDeleting} /></FormControl>
                       <FormMessage />
                     </FormItem>
                   )} />
@@ -228,7 +249,7 @@ export default function ManageResidentsPage() {
                 <FormField control={form.control} name="medicalSpecificities" render={({ field }) => (
                   <FormItem>
                     <FormLabel>Spécificités Médicales (optionnel)</FormLabel>
-                    <FormControl><Textarea placeholder="Diabète, hypertension..." {...field} disabled={isSubmitting || isPending} /></FormControl>
+                    <FormControl><Textarea placeholder="Diabète, hypertension..." {...field} disabled={isSubmittingForm || isPending || isDeleting} /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )} />
@@ -237,7 +258,7 @@ export default function ManageResidentsPage() {
                   <FormField control={form.control} name="diets" render={({ field }) => (
                     <FormItem>
                       <FormLabel>Régimes (séparés par une virgule)</FormLabel>
-                      <FormControl><Input placeholder="Sans sel, Végétarien" {...field} disabled={isSubmitting || isPending} /></FormControl>
+                      <FormControl><Input placeholder="Sans sel, Végétarien" {...field} disabled={isSubmittingForm || isPending || isDeleting} /></FormControl>
                       <FormDescription>Ex: Sans sel, Hypocalorique, Diabétique</FormDescription>
                       <FormMessage />
                     </FormItem>
@@ -245,7 +266,7 @@ export default function ManageResidentsPage() {
                   <FormField control={form.control} name="textures" render={({ field }) => (
                     <FormItem>
                       <FormLabel>Textures (séparées par une virgule)</FormLabel>
-                      <FormControl><Input placeholder="Mixé lisse, Haché fin" {...field} disabled={isSubmitting || isPending} /></FormControl>
+                      <FormControl><Input placeholder="Mixé lisse, Haché fin" {...field} disabled={isSubmittingForm || isPending || isDeleting} /></FormControl>
                       <FormDescription>Ex: Normal, Mixé lisse, Haché fin, Morceaux</FormDescription>
                       <FormMessage />
                     </FormItem>
@@ -253,14 +274,14 @@ export default function ManageResidentsPage() {
                   <FormField control={form.control} name="allergies" render={({ field }) => (
                     <FormItem>
                       <FormLabel>Allergies (séparées par une virgule)</FormLabel>
-                      <FormControl><Input placeholder="Arachides, Gluten" {...field} disabled={isSubmitting || isPending} /></FormControl>
+                      <FormControl><Input placeholder="Arachides, Gluten" {...field} disabled={isSubmittingForm || isPending || isDeleting} /></FormControl>
                       <FormMessage />
                     </FormItem>
                   )} />
                   <FormField control={form.control} name="contraindications" render={({ field }) => (
                     <FormItem>
                       <FormLabel>Contre-indications (séparées par une virgule)</FormLabel>
-                      <FormControl><Input placeholder="Pamplemousse, Anticoagulants" {...field} disabled={isSubmitting || isPending} /></FormControl>
+                      <FormControl><Input placeholder="Pamplemousse, Anticoagulants" {...field} disabled={isSubmittingForm || isPending || isDeleting} /></FormControl>
                       <FormMessage />
                     </FormItem>
                   )} />
@@ -272,12 +293,12 @@ export default function ManageResidentsPage() {
                       <FormLabel>Résident Actif</FormLabel>
                       <FormDescription>Indique si le résident est actuellement actif dans l'établissement.</FormDescription>
                     </div>
-                    <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} disabled={isSubmitting || isPending} /></FormControl>
+                    <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} disabled={isSubmittingForm || isPending || isDeleting} /></FormControl>
                   </FormItem>
                 )} />
                 
-                <Button type="submit" className="w-full sm:w-auto font-body" disabled={isSubmitting || isPending}>
-                  {(isSubmitting || isPending) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : (editingResident ? <Edit className="mr-2 h-4 w-4" /> : <UserPlus className="mr-2 h-4 w-4" />)}
+                <Button type="submit" className="w-full sm:w-auto font-body" disabled={isSubmittingForm || isPending || isDeleting}>
+                  {(isSubmittingForm || isPending) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : (editingResident ? <Edit className="mr-2 h-4 w-4" /> : <UserPlus className="mr-2 h-4 w-4" />)}
                   {editingResident ? 'Mettre à jour le résident' : 'Ajouter le résident'}
                 </Button>
               </form>
@@ -353,7 +374,7 @@ export default function ManageResidentsPage() {
                             className="text-primary hover:text-primary/90"
                             onClick={() => handleEdit(resident)}
                             aria-label={`Modifier ${resident.firstName} ${resident.lastName}`}
-                            disabled={isSubmitting || isPending}
+                            disabled={isSubmittingForm || isPending || isDeleting}
                           >
                             <Edit className="h-5 w-5" />
                           </Button>
@@ -361,11 +382,11 @@ export default function ManageResidentsPage() {
                             variant="ghost"
                             size="icon"
                             className="text-destructive hover:text-destructive/90"
-                            onClick={() => handleDeleteResident(resident.id, `${resident.firstName} ${resident.lastName}`)}
+                            onClick={() => openDeleteResidentDialog(resident.id, `${resident.firstName} ${resident.lastName}`)}
                             aria-label={`Supprimer ${resident.firstName} ${resident.lastName}`}
-                            disabled={isSubmitting || isPending}
+                            disabled={isSubmittingForm || isPending || isDeleting}
                           >
-                            <Trash2 className="h-5 w-5" />
+                             {isDeleting && residentToDelete?.id === resident.id ? <Loader2 className="h-5 w-5 animate-spin"/> : <Trash2 className="h-5 w-5" />}
                           </Button>
                         </TableCell>
                       </TableRow>
@@ -377,6 +398,23 @@ export default function ManageResidentsPage() {
           </CardContent>
         </Card>
       </div>
+      <AlertDialog open={isDeleteResidentDialogOpen} onOpenChange={setIsDeleteResidentDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmer la suppression</AlertDialogTitle>
+            <AlertDialogDescription>
+              Êtes-vous sûr de vouloir supprimer {residentToDelete?.name ?? 'ce résident'} ? Cette action est irréversible et le résident sera supprimé de la base de données.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setResidentToDelete(null)} disabled={isDeleting}>Annuler</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDeleteResident} disabled={isDeleting} className="bg-destructive hover:bg-destructive/90">
+              {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
+              Supprimer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </AppLayout>
   );
 }

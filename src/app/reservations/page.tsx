@@ -19,6 +19,16 @@ import { Calendar } from '@/components/ui/calendar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { CalendarIcon, Send, Loader2, Users, Trash2, BellRing } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { cn } from '@/lib/utils';
 import { useToast } from "@/hooks/use-toast";
 import type { MealReservationFormData, MealReservation, Notification } from '@/types';
@@ -54,10 +64,13 @@ type ServerActionReservationData = Omit<ReservationFormValues, 'mealDate'> & {
 };
 
 export default function MealReservationPage() {
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSubmittingForm, setIsSubmittingForm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [isLoadingReservations, setIsLoadingReservations] = useState(true);
   const [reservationsList, setReservationsList] = useState<MealReservation[]>([]);
   const [clientSideRendered, setClientSideRendered] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [reservationToDeleteId, setReservationToDeleteId] = useState<string | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -73,7 +86,7 @@ export default function MealReservationPage() {
         toast({
           variant: "destructive",
           title: "Erreur de chargement",
-          description: "Impossible de charger les réservations depuis la base de données. Vérifiez les règles Firestore.",
+          description: "Impossible de charger les réservations depuis la base de données. Vérifiez les règles Firestore et votre connexion.",
         });
         setIsLoadingReservations(false);
         setReservationsList([]);
@@ -95,7 +108,7 @@ export default function MealReservationPage() {
   });
 
   const onSubmit: SubmitHandler<ReservationFormValues> = async (clientFormData) => {
-    setIsSubmitting(true);
+    setIsSubmittingForm(true);
     try {
       const serverActionData: ServerActionReservationData = {
         ...clientFormData,
@@ -152,46 +165,44 @@ export default function MealReservationPage() {
         description: "Une erreur inattendue est survenue lors de la soumission.",
       });
     } finally {
-      setIsSubmitting(false);
+      setIsSubmittingForm(false);
     }
   };
 
- const handleDeleteReservation = async (reservationId: string) => {
-    if (!clientSideRendered) {
-      toast({ variant: "destructive", title: "Erreur", description: "Opération non disponible pour le moment." });
-      return;
-    }
-    if (!reservationId) {
-        toast({ variant: "destructive", title: "Erreur", description: "ID de réservation manquant pour la suppression." });
-        return;
-    }
+ const openDeleteDialog = (id: string) => {
+    setReservationToDeleteId(id);
+    setIsDeleteDialogOpen(true);
+  };
 
-    if (window.confirm(`Êtes-vous sûr de vouloir supprimer cette réservation (ID: ${reservationId}) ? Cette action est irréversible.`)) {
-      setIsSubmitting(true); 
-      try {
-        const result = await deleteReservationFromFirestore(reservationId); 
-        if (result.success) {
-          toast({ title: "Demande de suppression traitée", description: result.message + " La liste sera mise à jour si la suppression de la base de données est effective." });
-          // La mise à jour de la liste est gérée par l'écouteur onReservationsUpdate
-        } else {
-          toast({
-            variant: "destructive",
-            title: "Échec de la suppression",
-            description: result.message || "Une erreur est survenue lors de la suppression de la réservation.",
-          });
-        }
-      } catch (error) {
-        console.error("Erreur côté client lors de l'appel à deleteReservationFromFirestore:", error);
+  const confirmDeleteReservation = async () => {
+    if (!reservationToDeleteId) return;
+
+    setIsDeleting(true);
+    try {
+      const result = await deleteReservationFromFirestore(reservationToDeleteId);
+      if (result.success) {
+        toast({ title: "Réservation supprimée", description: result.message + " La liste est mise à jour par la base de données." });
+      } else {
         toast({
           variant: "destructive",
-          title: "Erreur Client",
-          description: `Une erreur s'est produite lors de la tentative de suppression. ${error instanceof Error ? error.message : ''}`,
+          title: "Échec de la suppression",
+          description: result.message || "Une erreur est survenue lors de la suppression.",
         });
-      } finally {
-        setIsSubmitting(false);
       }
+    } catch (error) {
+      console.error("Erreur côté client lors de l'appel à deleteReservationFromFirestore:", error);
+      toast({
+        variant: "destructive",
+        title: "Erreur Client",
+        description: `Une erreur s'est produite lors de la tentative de suppression. ${error instanceof Error ? error.message : ''}`,
+      });
+    } finally {
+      setIsDeleting(false);
+      setIsDeleteDialogOpen(false);
+      setReservationToDeleteId(null);
     }
   };
+
 
   return (
     <AppLayout>
@@ -220,7 +231,7 @@ export default function MealReservationPage() {
                     <FormItem>
                       <FormLabel>Nom du Résident / Personne concernée</FormLabel>
                       <FormControl>
-                        <Input placeholder="Ex: Mme Dupont et famille" {...field} disabled={isSubmitting} />
+                        <Input placeholder="Ex: Mme Dupont et famille" {...field} disabled={isSubmittingForm} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -242,7 +253,7 @@ export default function MealReservationPage() {
                                 "w-full pl-3 text-left font-normal",
                                 !field.value && "text-muted-foreground"
                               )}
-                              disabled={isSubmitting}
+                              disabled={isSubmittingForm}
                             >
                               {field.value ? (
                                 formatDateFn(field.value, "PPP", { locale: fr })
@@ -280,7 +291,7 @@ export default function MealReservationPage() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Type de repas</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value} disabled={isSubmitting}>
+                      <Select onValueChange={field.onChange} value={field.value} disabled={isSubmittingForm}>
                         <FormControl>
                           <SelectTrigger>
                             <SelectValue placeholder="Choisir le type de repas" />
@@ -303,7 +314,7 @@ export default function MealReservationPage() {
                     <FormItem>
                       <FormLabel>Nombre d'invités (en plus du résident)</FormLabel>
                       <FormControl>
-                        <Input type="number" placeholder="0" {...field} onChange={event => field.onChange(+event.target.value)} disabled={isSubmitting} />
+                        <Input type="number" placeholder="0" {...field} onChange={event => field.onChange(+event.target.value)} disabled={isSubmittingForm} />
                       </FormControl>
                       <FormDescription>
                         Si seul le résident mange (pas d'invité supplémentaire), laissez à 0.
@@ -324,7 +335,7 @@ export default function MealReservationPage() {
                           placeholder="Informations additionnelles, allergies des invités spécifiques à ce repas, etc."
                           className="resize-none"
                           {...field}
-                          disabled={isSubmitting}
+                          disabled={isSubmittingForm}
                         />
                       </FormControl>
                       <FormMessage />
@@ -332,8 +343,8 @@ export default function MealReservationPage() {
                   )}
                 />
                 
-                <Button type="submit" className="w-full sm:w-auto" disabled={isSubmitting || isLoadingReservations}>
-                  {isSubmitting ? (
+                <Button type="submit" className="w-full sm:w-auto" disabled={isSubmittingForm || isLoadingReservations}>
+                  {isSubmittingForm ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       Envoi en cours...
@@ -400,11 +411,11 @@ export default function MealReservationPage() {
                                         <Button 
                                             variant="ghost" 
                                             size="icon" 
-                                            onClick={() => handleDeleteReservation(resa.id)} 
+                                            onClick={() => openDeleteDialog(resa.id)} 
                                             aria-label="Supprimer la réservation"
-                                            disabled={!clientSideRendered || isSubmitting || isLoadingReservations} 
+                                            disabled={!clientSideRendered || isSubmittingForm || isLoadingReservations || isDeleting} 
                                         >
-                                            <Trash2 className="h-4 w-4 text-destructive"/>
+                                            {isDeleting && reservationToDeleteId === resa.id ? <Loader2 className="h-4 w-4 animate-spin"/> : <Trash2 className="h-4 w-4 text-destructive"/>}
                                         </Button>
                                     </TableCell>
                                 </TableRow>
@@ -415,10 +426,27 @@ export default function MealReservationPage() {
             )}
           </CardContent>
            <CardFooter>
-             <p className="text-xs text-muted-foreground font-body">Les réservations sont désormais stockées et lues depuis la base de données Firestore en temps réel.</p>
+             <p className="text-xs text-muted-foreground font-body">Les réservations sont stockées et lues depuis la base de données Firestore en temps réel.</p>
            </CardFooter>
         </Card>
       </div>
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmer la suppression</AlertDialogTitle>
+            <AlertDialogDescription>
+              Êtes-vous sûr de vouloir supprimer cette réservation ? Cette action est irréversible et la réservation sera supprimée de la base de données.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setReservationToDeleteId(null)} disabled={isDeleting}>Annuler</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDeleteReservation} disabled={isDeleting} className="bg-destructive hover:bg-destructive/90">
+              {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
+              Supprimer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </AppLayout>
   );
 }
