@@ -15,17 +15,7 @@ import type { Notification } from '@/types';
 import { AlertTriangle, CheckCircle2, Info, Bell, Trash2, Eye, Clock, UtensilsCrossed, Send, BellPlus, Loader2 } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 
-// Fixed reference date for mock data
-const mockDateReference = new Date('2024-07-15T10:00:00.000Z');
 const SHARED_NOTIFICATIONS_KEY = 'sharedAppNotifications';
-
-// Mock Data for Notifications using fixed timestamps
-const mockNotificationsInitial: Notification[] = [
-  { id: 'mock-1', timestamp: new Date(mockDateReference.getTime() - 3600000).toISOString(), type: 'absence', title: 'Absence Imprévue (Exemple)', message: 'Paul Martin ne prendra pas son repas ce midi (Raison: RDV médical).', isRead: false, relatedResidentId: '1' },
-  { id: 'mock-2', timestamp: new Date(mockDateReference.getTime() - 7200000).toISOString(), type: 'outing', title: 'Sortie Extérieure (Exemple)', message: 'Paola Leroy déjeune en famille ce midi.', isRead: true, relatedResidentId: '2' },
-  { id: 'mock-3', timestamp: new Date(mockDateReference.getTime() - 10800000).toISOString(), type: 'info', title: 'Présence Confirmée (Exemple)', message: 'Tous les résidents de l\'étage A sont présents pour le déjeuner.', isRead: true },
-  { id: 'mock-4', timestamp: new Date(mockDateReference.getTime() - 86400000).toISOString(), type: 'allergy_alert', title: 'Alerte Allergie Cuisine (Exemple)', message: 'Attention: Jean Dupont est allergique aux arachides. Vérifiez la préparation du plat n°3.', isRead: false, relatedResidentId: '1'},
-];
 
 const customNotificationSchema = z.object({
   title: z.string().min(3, { message: "Le titre doit contenir au moins 3 caractères." }).max(100, { message: "Le titre ne peut pas dépasser 100 caractères." }),
@@ -57,15 +47,16 @@ export default function NotificationsPage() {
         loadedNotifications = JSON.parse(storedNotificationsRaw);
       }
       
+      // If loadedNotifications is not empty, sort and set. Otherwise, set an empty array.
       if (loadedNotifications.length > 0) {
           setNotifications(loadedNotifications.sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
       } else {
-          setNotifications(mockNotificationsInitial.sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
+          setNotifications([]); // Set to empty array if nothing in localStorage
       }
 
     } catch (error) {
       console.error("Error loading notifications from localStorage:", error);
-      setNotifications(mockNotificationsInitial.sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
+      setNotifications([]); // Set to empty array on error as well
     }
   }, []);
 
@@ -93,7 +84,7 @@ export default function NotificationsPage() {
         return <Clock className="h-6 w-6 text-blue-500" />;
       case 'info':
       case 'attendance': 
-      case 'reservation_made': // Added reservation_made to use CheckCircle2
+      case 'reservation_made': 
       default:
         return <CheckCircle2 className="h-6 w-6 text-green-500" />;
     }
@@ -127,13 +118,12 @@ export default function NotificationsPage() {
       const newNotification: Notification = {
         id: `custom-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
         timestamp: new Date().toISOString(),
-        type: 'info', // Using 'info' type for custom notifications
+        type: 'info', 
         title: data.title,
         message: data.message,
         isRead: false,
       };
 
-      // Prepend and save
       const updatedNotifications = [newNotification, ...notifications].sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
       updateLocalStorageNotifications(updatedNotifications);
       setNotifications(updatedNotifications);
@@ -222,21 +212,26 @@ export default function NotificationsPage() {
                     </CardDescription>
                 </div>
                 <div className="flex gap-2 flex-shrink-0">
-                    <Button variant="outline" className="font-body" onClick={handleMarkAllAsRead} disabled={notifications.every(n => n.isRead)}>
+                    <Button variant="outline" className="font-body" onClick={handleMarkAllAsRead} disabled={notifications.every(n => n.isRead) || notifications.length === 0}>
                     <Eye className="mr-2 h-4 w-4"/>Tout marquer lu
                     </Button>
-                    <Button variant="destructive" className="font-body" onClick={handleDeleteRead} disabled={notifications.every(n => !n.isRead) || notifications.filter(n => n.isRead).length === 0}>
+                    <Button variant="destructive" className="font-body" onClick={handleDeleteRead} disabled={notifications.filter(n => n.isRead).length === 0}>
                     <Trash2 className="mr-2 h-4 w-4"/>Supprimer lues
                     </Button>
                 </div>
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            {notifications.length === 0 ? (
+            {notifications.length === 0 && clientSideRendered ? (
               <div className="text-center py-10 text-muted-foreground font-body">
                 <Bell className="h-12 w-12 mx-auto mb-4" />
                 <p>Aucune notification pour le moment.</p>
               </div>
+            ) : !clientSideRendered ? (
+                 <div className="flex justify-center items-center py-10">
+                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                    <p className="ml-2 font-body text-muted-foreground">Chargement des notifications...</p>
+                </div>
             ) : (
               notifications.map(notif => (
                 <div
@@ -284,4 +279,3 @@ export default function NotificationsPage() {
     </AppLayout>
   );
 }
-

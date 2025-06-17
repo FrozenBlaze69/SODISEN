@@ -14,7 +14,7 @@ import { useToast } from "@/hooks/use-toast";
 import { handleMenuUpload } from './actions';
 import { format, parseISO, isToday } from 'date-fns';
 import { onResidentsUpdate } from '@/lib/firebase/firestoreClientService';
-import { onReservationsUpdate } from '@/lib/firebase/firestoreClientService'; // Import the listener
+import { onReservationsUpdate } from '@/lib/firebase/firestoreClientService'; 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 
@@ -22,7 +22,7 @@ export const todayISO = new Date().toISOString().split('T')[0];
 const LOCAL_STORAGE_ATTENDANCE_KEY_PREFIX = 'simulatedDailyAttendance_';
 const SHARED_NOTIFICATIONS_KEY = 'sharedAppNotifications'; 
 const LOCAL_STORAGE_WEEKLY_PLAN_FILE_NAME_KEY = 'currentWeeklyPlanFileName';
-// const LOCAL_STORAGE_RESERVATIONS_KEY = 'mealReservations'; // No longer used
+
 
 const LUNCH_HOUR_THRESHOLD = 14; // Switch to dinner view at 2 PM
 
@@ -46,14 +46,6 @@ const initialMockMealsTodayForDinnerDashboard: Meal[] = [
   { id: 'fallback-d1-dinner', name: 'Salade de Fruits (Défaut Dîn.)', category: 'dessert', dietTags: [], allergenTags: [], description: "Fraîche et de saison." },
 ];
 
-
-const mockDateReference = new Date('2024-07-15T10:00:00.000Z');
-
-const initialMockNotificationsForDashboard: Notification[] = [
-  { id: 'dash-mock-1', timestamp: new Date(mockDateReference.getTime() - 3600000).toISOString(), type: 'absence', title: 'Absence Imprévue (Exemple)', message: 'Sophie Petit ne prendra pas son repas ce midi (Coiffeur).', isRead: false, relatedResidentId: '6' },
-  { id: 'dash-mock-2', timestamp: new Date(mockDateReference.getTime() - 7200000).toISOString(), type: 'info', title: 'Menu Spécial Anniversaire (Exemple)', message: 'Le dessert "Crème Caramel" est pour l\'anniversaire de Jean Dupont.', isRead: true },
-  { id: 'dash-mock-3', timestamp: new Date(mockDateReference.getTime() - 10800000).toISOString(), type: 'allergy_alert', title: 'Allergie Arachides (Exemple)', message: 'Attention cuisine: Jean Dupont (Ch. 101A) est allergique aux arachides.', isRead: false, relatedResidentId: '1' },
-];
 
 type PreparationType = 'Normal' | 'Mixé morceaux' | 'Mixé lisse' | 'Haché fin' | 'Haché gros';
 const ALL_PREPARATION_TYPES: PreparationType[] = ['Normal', 'Mixé morceaux', 'Mixé lisse', 'Haché fin', 'Haché gros'];
@@ -92,7 +84,7 @@ export default function DashboardPage() {
   const [dailyAttendanceRecords, setDailyAttendanceRecords] = useState<AttendanceRecord[]>([]);
   const [allReservations, setAllReservations] = useState<MealReservation[]>([]);
   const [isLoadingReservations, setIsLoadingReservations] = useState(true);
-  const [dashboardNotifications, setDashboardNotifications] = useState<Notification[]>(initialMockNotificationsForDashboard);
+  const [dashboardNotifications, setDashboardNotifications] = useState<Notification[]>([]);
   const [currentMealFocus, setCurrentMealFocus] = useState<MealType>('lunch');
   const [currentTime, setCurrentTime] = useState<string | null>(null);
   const [allergyConflictAlerts, setAllergyConflictAlerts] = useState<string[]>([]);
@@ -163,14 +155,18 @@ export default function DashboardPage() {
 
     try {
         const storedNotificationsRaw = localStorage.getItem(SHARED_NOTIFICATIONS_KEY);
+        let loadedNotifications: Notification[] = [];
         if (storedNotificationsRaw) {
-            const loadedNotifications: Notification[] = JSON.parse(storedNotificationsRaw);
-            if (loadedNotifications.length > 0) {
-                 setDashboardNotifications(loadedNotifications.sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
-            }
+            loadedNotifications = JSON.parse(storedNotificationsRaw);
+        }
+        if (loadedNotifications.length > 0) {
+            setDashboardNotifications(loadedNotifications.sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
+        } else {
+            setDashboardNotifications([]); // Set to empty array if nothing in localStorage
         }
     } catch (error) {
         console.error("Error loading notifications from localStorage for dashboard:", error);
+        setDashboardNotifications([]); // Set to empty array on error
     }
 
     setIsLoadingResidents(true);
@@ -231,7 +227,7 @@ export default function DashboardPage() {
   }, [activeResidents, dailyAttendanceRecords, currentMealFocus]);
 
   const totalGuestsForFocusedMeal = useMemo(() => {
-    if (!clientSideRendered || isLoadingReservations) return 0; // Wait for client and data
+    if (!clientSideRendered || isLoadingReservations) return 0; 
     return allReservations
       .filter(res => res.mealDate === todayISO && res.mealType === currentMealFocus)
       .reduce((sum, res) => sum + res.numberOfGuests, 0);
@@ -242,7 +238,7 @@ export default function DashboardPage() {
   const presentResidentsCountForFocusedMeal = presentAttendancesForFocusedMeal.length;
   
   const totalMealsToPrepare = useMemo(() => {
-    if (isLoadingResidents || isLoadingReservations) return 0; // Show 0 or a loader text while loading
+    if (isLoadingResidents || isLoadingReservations) return 0; 
     return presentResidentsCountForFocusedMeal + totalGuestsForFocusedMeal;
   }, [isLoadingResidents, isLoadingReservations, presentResidentsCountForFocusedMeal, totalGuestsForFocusedMeal]);
 
