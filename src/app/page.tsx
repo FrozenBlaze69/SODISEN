@@ -12,25 +12,14 @@ import Link from 'next/link';
 import { Input } from '@/components/ui/input';
 import { useToast } from "@/hooks/use-toast";
 import { handleMenuUpload } from './actions';
-import { format, parseISO, isToday as dateIsToday } from 'date-fns'; // Renamed isToday to avoid conflict
-import { onResidentsUpdate } from '@/lib/firebase/firestoreClientService';
+import { format, parseISO, isToday as dateIsToday } from 'date-fns';
+import { onResidentsUpdate, onSharedNotificationsUpdate } from '@/lib/firebase/firestoreClientService';
 import { onReservationsUpdate } from '@/lib/firebase/firestoreClientService';
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
-// REMOVED: export const todayISO = new Date().toISOString().split('T')[0];
 const LOCAL_STORAGE_ATTENDANCE_KEY_PREFIX = 'simulatedDailyAttendance_';
-const SHARED_NOTIFICATIONS_KEY = 'sharedAppNotifications';
 const LOCAL_STORAGE_WEEKLY_PLAN_FILE_NAME_KEY = 'currentWeeklyPlanFileName';
-
-const LUNCH_HOUR_THRESHOLD = 14; // Switch to dinner view at 2 PM
-
-// This mock data is less critical now as we fetch based on client-determined date
-// It might still be used if localStorage is empty for the *actual* current day on client.
-export const mockAttendanceFallback: AttendanceRecord[] = [
-  // { id: 'att_fb_1_lunch', residentId: 'residentId1_from_firestore', date: todayISO, mealType: 'lunch', status: 'present', mealLocation: 'dining_hall' },
-  // ... (ensure date here matches how todayISO would be if needed, or remove if logic relies on empty array)
-];
-
+const LUNCH_HOUR_THRESHOLD = 14; 
 
 const initialMockMealsTodayForLunchDashboard: Meal[] = [
   { id: 'fallback-s1-lunch', name: 'Velouté de Carottes (Défaut Déj.)', category: 'starter', dietTags: ['Végétarien', 'Sans Sel'], allergenTags: [], description: "Un velouté doux et parfumé." },
@@ -44,10 +33,8 @@ const initialMockMealsTodayForDinnerDashboard: Meal[] = [
   { id: 'fallback-d1-dinner', name: 'Salade de Fruits (Défaut Dîn.)', category: 'dessert', dietTags: [], allergenTags: [], description: "Fraîche et de saison." },
 ];
 
-
 type PreparationType = 'Normal' | 'Mixé morceaux' | 'Mixé lisse' | 'Haché fin' | 'Haché gros';
 const ALL_PREPARATION_TYPES: PreparationType[] = ['Normal', 'Mixé morceaux', 'Mixé lisse', 'Haché fin', 'Haché gros'];
-
 
 const getPreparationTypeForResident = (resident?: Resident): PreparationType => {
   if (!resident || !resident.textures || resident.textures.length === 0) return 'Normal';
@@ -84,15 +71,15 @@ export default function DashboardPage() {
   const [allReservations, setAllReservations] = useState<MealReservation[]>([]);
   const [isLoadingReservations, setIsLoadingReservations] = useState(true);
   const [dashboardNotifications, setDashboardNotifications] = useState<Notification[]>([]);
+  const [isLoadingNotifications, setIsLoadingNotifications] = useState(true);
   const [currentMealFocus, setCurrentMealFocus] = useState<MealType>('lunch');
   const [currentTime, setCurrentTime] = useState<string | null>(null);
   const [allergyConflictAlerts, setAllergyConflictAlerts] = useState<string[]>([]);
 
   useEffect(() => {
-    // Determine current date on client side after mount
     const today = new Date().toISOString().split('T')[0];
     setCurrentDateISO(today);
-    setClientSideRendered(true); // Indicate client environment is ready
+    setClientSideRendered(true); 
 
     const updateCurrentTimeAndFocus = () => {
         const now = new Date();
@@ -113,7 +100,7 @@ export default function DashboardPage() {
 
 
   useEffect(() => {
-    if (!clientSideRendered || !currentDateISO || !currentAttendanceKey) return; // Ensure date and key are set
+    if (!clientSideRendered || !currentDateISO || !currentAttendanceKey) return;
 
     const storedPlan = localStorage.getItem('currentWeeklyPlan');
     if (storedPlan) {
@@ -134,7 +121,7 @@ export default function DashboardPage() {
       if (storedAttendance) {
         setDailyAttendanceRecords(JSON.parse(storedAttendance) as AttendanceRecord[]);
       } else {
-        setDailyAttendanceRecords([]); // Default to empty if no attendance for this specific day
+        setDailyAttendanceRecords([]); 
       }
     } catch (e) {
       console.error("Error reading daily attendance from localStorage for dashboard", e);
@@ -149,31 +136,24 @@ export default function DashboardPage() {
       },
       (error) => {
         console.error("Dashboard: Failed to listen to reservations:", error);
-        toast({
-          variant: "destructive",
-          title: "Erreur (Réservations)",
-          description: "Impossible de charger les réservations. Les totaux pourraient être incorrects.",
-        });
+        toast({ variant: "destructive", title: "Erreur (Réservations)", description: "Impossible de charger les réservations."});
         setIsLoadingReservations(false);
         setAllReservations([]);
       }
     );
 
-    try {
-        const storedNotificationsRaw = localStorage.getItem(SHARED_NOTIFICATIONS_KEY);
-        let loadedNotifications: Notification[] = [];
-        if (storedNotificationsRaw) {
-            loadedNotifications = JSON.parse(storedNotificationsRaw);
-        }
-        if (loadedNotifications.length > 0) {
-            setDashboardNotifications(loadedNotifications.sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
-        } else {
-            setDashboardNotifications([]);
-        }
-    } catch (error) {
-        console.error("Error loading notifications from localStorage for dashboard:", error);
-        setDashboardNotifications([]);
-    }
+    setIsLoadingNotifications(true);
+    const unsubscribeNotifications = onSharedNotificationsUpdate(
+      (allNotifs) => { // We only care about allNotifs for the dashboard display
+        setDashboardNotifications(allNotifs.slice(0,10)); // Take latest 10 for example
+        setIsLoadingNotifications(false);
+      }, (error) => {
+        console.error("Dashboard: Error listening to shared notifications:", error);
+        toast({ variant: "destructive", title: "Erreur Notifications", description: "Impossible de charger les notifications." });
+        setIsLoadingNotifications(false);
+      }
+    );
+
 
     setIsLoadingResidents(true);
     const unsubscribeResidents = onResidentsUpdate((updatedResidents) => {
@@ -181,18 +161,14 @@ export default function DashboardPage() {
       setIsLoadingResidents(false);
     }, (error) => {
         console.error("Failed to subscribe to residents update:", error);
-        toast({
-            title: "Erreur de connexion Firestore",
-            description: "Impossible de charger les données des résidents. Vérifiez la configuration Firebase et les règles de sécurité.",
-            variant: "destructive",
-            duration: 10000,
-        });
+        toast({ title: "Erreur de connexion Firestore", description: "Impossible de charger les données des résidents.", variant: "destructive", duration: 10000 });
         setAllResidents([]);
         setIsLoadingResidents(false);
     });
     return () => {
       unsubscribeResidents();
       unsubscribeReservations();
+      unsubscribeNotifications();
     };
 
   }, [clientSideRendered, currentDateISO, currentAttendanceKey, toast]);
@@ -393,14 +369,15 @@ export default function DashboardPage() {
   }
 
   const unreadNotificationsCount = useMemo(() => {
+     // This could be enhanced if 'isRead' was synced via Firestore per user
+     // For now, this reflects total notifications shown on dashboard, not strictly "unread" globally
     if (!clientSideRendered) return 0;
-    return dashboardNotifications.filter(n => !n.isRead).length;
+    return dashboardNotifications.length; // Or implement a local "read" state for dashboard items if needed
   }, [dashboardNotifications, clientSideRendered]);
 
 
   const focusedMealText = currentMealFocus === 'lunch' ? 'Déjeuner' : 'Dîner';
-
-  const isCoreDataLoading = !currentDateISO || isLoadingResidents || isLoadingReservations || !clientSideRendered;
+  const isCoreDataLoading = !currentDateISO || isLoadingResidents || isLoadingReservations || !clientSideRendered || isLoadingNotifications;
 
 
   if (isCoreDataLoading) {
@@ -486,7 +463,7 @@ export default function DashboardPage() {
               <BellRing className="h-5 w-5 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold font-body">{unreadNotificationsCount} Non Lues</div>
+              <div className="text-2xl font-bold font-body">{unreadNotificationsCount}</div>
               <Link href="/notifications">
                 <Button variant="link" className="p-0 h-auto text-xs font-body">Voir toutes les notifications</Button>
               </Link>
@@ -579,13 +556,15 @@ export default function DashboardPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle className="font-headline">Notifications Récentes</CardTitle>
+              <CardTitle className="font-headline">Notifications Récentes (depuis Firestore)</CardTitle>
               <CardDescription className="font-body">Dernières alertes et informations importantes.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
-              {clientSideRendered && dashboardNotifications.length > 0 ? (
+              {isLoadingNotifications ? (
+                Array.from({length: 3}).map((_, i) => <div key={i} className="h-20 bg-muted rounded-md animate-pulse"></div>)
+              ) : dashboardNotifications.length > 0 ? (
                   dashboardNotifications.slice(0, 3).map(notif => (
-                    <div key={notif.id} className={`flex items-start gap-3 p-3 rounded-md border ${!notif.isRead ? 'bg-accent/10 border-accent' : 'bg-card'}`}>
+                    <div key={notif.id} className={`flex items-start gap-3 p-3 rounded-md border ${!notif.isRead ? 'bg-accent/10 border-accent' : 'bg-card'}`}> {/* isRead is not synced yet for dashboard, just for consistency */}
                       <div className="pt-1">{getNotificationIcon(notif.type)}</div>
                       <div>
                         <p className={`font-semibold font-body ${!notif.isRead ? 'text-primary' : ''}`}>{notif.title}</p>
@@ -594,10 +573,8 @@ export default function DashboardPage() {
                       </div>
                     </div>
                   ))
-                ) : clientSideRendered && dashboardNotifications.length === 0 ? (
-                    <p className="text-muted-foreground font-body text-center py-4">Aucune notification récente.</p>
                 ) : (
-                 Array.from({length: 3}).map((_, i) => <div key={i} className="h-20 bg-muted rounded-md animate-pulse"></div>)
+                    <p className="text-muted-foreground font-body text-center py-4">Aucune notification récente.</p>
                 )
               }
               <div className="mt-4">

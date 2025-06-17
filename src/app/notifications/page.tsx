@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useForm, SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -11,11 +11,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import type { Notification } from '@/types';
+import type { Notification, NotificationFormData } from '@/types';
 import { AlertTriangle, CheckCircle2, Info, Bell, Trash2, Eye, Clock, UtensilsCrossed, Send, BellPlus, Loader2 } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
+import { addSharedNotificationToFirestore, deleteSharedNotificationFromFirestore } from '@/lib/firebase/firestoreService';
+import { onSharedNotificationsUpdate } from '@/lib/firebase/firestoreClientService';
 
-const SHARED_NOTIFICATIONS_KEY = 'sharedAppNotifications';
+const READ_NOTIFICATIONS_LOCAL_STORAGE_KEY = 'readSharedNotificationIds';
 
 const customNotificationSchema = z.object({
   title: z.string().min(3, { message: "Le titre doit contenir au moins 3 caractères." }).max(100, { message: "Le titre ne peut pas dépasser 100 caractères." }),
@@ -25,9 +27,11 @@ type CustomNotificationFormValues = z.infer<typeof customNotificationSchema>;
 
 
 export default function NotificationsPage() {
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [clientSideRendered, setClientSideRendered] = useState(false);
+  const [allNotifications, setAllNotifications] = useState<Notification[]>([]);
+  const [readNotificationIds, setReadNotificationIds] = useState<Set<string>>(new Set());
+  const [isLoading, setIsLoading] = useState(true);
   const [isSubmittingCustom, setIsSubmittingCustom] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const { toast } = useToast();
 
   const form = useForm<CustomNotificationFormValues>({
@@ -39,33 +43,37 @@ export default function NotificationsPage() {
   });
 
   useEffect(() => {
-    setClientSideRendered(true);
+    // Load read notification IDs from localStorage
     try {
-      const storedNotificationsRaw = localStorage.getItem(SHARED_NOTIFICATIONS_KEY);
-      let loadedNotifications: Notification[] = [];
-      if (storedNotificationsRaw) {
-        loadedNotifications = JSON.parse(storedNotificationsRaw);
+      const storedReadIds = localStorage.getItem(READ_NOTIFICATIONS_LOCAL_STORAGE_KEY);
+      if (storedReadIds) {
+        setReadNotificationIds(new Set(JSON.parse(storedReadIds)));
       }
-      
-      if (loadedNotifications.length > 0) {
-          setNotifications(loadedNotifications.sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
-      } else {
-          setNotifications([]); 
-      }
-
     } catch (error) {
-      console.error("Error loading notifications from localStorage:", error);
-      setNotifications([]); 
+      console.error("Error loading read notification IDs from localStorage:", error);
     }
-  }, []);
 
-  const updateLocalStorageNotifications = (updatedNotifications: Notification[]) => {
-    if (!clientSideRendered) return; 
+    // Subscribe to notifications from Firestore
+    setIsLoading(true);
+    const unsubscribe = onSharedNotificationsUpdate(
+      (updatedNotifications) => {
+        setAllNotifications(updatedNotifications);
+        setIsLoading(false);
+      },
+      (error) => {
+        console.error("Error fetching notifications from Firestore:", error);
+        toast({ variant: "destructive", title: "Erreur de chargement", description: "Impossible de charger les notifications." });
+        setIsLoading(false);
+      }
+    );
+    return () => unsubscribe();
+  }, [toast]);
+
+  const updateReadNotificationIdsInStorage = (newReadIds: Set<string>) => {
     try {
-      localStorage.setItem(SHARED_NOTIFICATIONS_KEY, JSON.stringify(updatedNotifications));
+      localStorage.setItem(READ_NOTIFICATIONS_LOCAL_STORAGE_KEY, JSON.stringify(Array.from(newReadIds)));
     } catch (error) {
-      console.error("Error saving notifications to localStorage:", error);
-      toast({ variant: "destructive", title: "Erreur Locale", description: "Impossible de sauvegarder la notification localement."});
+      console.error("Error saving read notification IDs to localStorage:", error);
     }
   };
 
@@ -89,55 +97,71 @@ export default function NotificationsPage() {
     }
   };
 
+  const displayedNotifications = useMemo(() => {
+    return allNotifications.map(n => ({
+      ...n,
+      isRead: readNotificationIds.has(n.id),
+    })).sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  }, [allNotifications, readNotificationIds]);
+
+
   const handleMarkAsRead = (id: string) => {
-    const newNotifications = notifications.map(n => n.id === id ? { ...n, isRead: true } : n);
-    setNotifications(newNotifications);
-    updateLocalStorageNotifications(newNotifications);
+    const newReadIds = new Set(readNotificationIds);
+    newReadIds.add(id);
+    setReadNotificationIds(newReadIds);
+    updateReadNotificationIdsInStorage(newReadIds);
   };
 
   const handleMarkAllAsRead = () => {
-    const newNotifications = notifications.map(n => ({ ...n, isRead: true }));
-    setNotifications(newNotifications);
-    updateLocalStorageNotifications(newNotifications);
+    const newReadIds = new Set(allNotifications.map(n => n.id));
+    setReadNotificationIds(newReadIds);
+    updateReadNotificationIdsInStorage(newReadIds);
   };
 
-  const handleDeleteRead = () => {
-    const newNotifications = notifications.filter(n => !n.isRead);
-    setNotifications(newNotifications);
-    updateLocalStorageNotifications(newNotifications);
+  const handleDeleteRead = async () => {
+    const readNotifsToDelete = allNotifications.filter(n => readNotificationIds.has(n.id));
+    if (readNotifsToDelete.length === 0) {
+      toast({ description: "Aucune notification lue à supprimer." });
+      return;
+    }
+    setIsDeleting(true);
+    try {
+      await Promise.all(readNotifsToDelete.map(n => deleteSharedNotificationFromFirestore(n.id)));
+      // Remove from local read set as well
+      const remainingReadIds = new Set(readNotificationIds);
+      readNotifsToDelete.forEach(n => remainingReadIds.delete(n.id));
+      setReadNotificationIds(remainingReadIds);
+      updateReadNotificationIdsInStorage(remainingReadIds);
+
+      toast({ title: "Notifications lues supprimées", description: `${readNotifsToDelete.length} notification(s) ont été supprimée(s) de la base de données.` });
+    } catch (error) {
+      console.error("Error deleting read notifications:", error);
+      toast({ variant: "destructive", title: "Erreur de suppression", description: `Impossible de supprimer les notifications. ${error instanceof Error ? error.message : ''}` });
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   const handleSendCustomNotification: SubmitHandler<CustomNotificationFormValues> = async (data) => {
-    if (!clientSideRendered) {
-        toast({ variant: "destructive", title: "Erreur", description: "Le composant n'est pas prêt." });
-        return;
-    }
     setIsSubmittingCustom(true);
     try {
-      const newNotification: Notification = {
-        id: `custom-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
-        timestamp: new Date().toISOString(),
+      const newNotificationData: NotificationFormData = {
+        timestamp: new Date(),
         type: 'info', 
         title: data.title,
         message: data.message,
-        isRead: false,
+        // isRead is handled by Firestore default / local state
+        // relatedResidentId can be added if needed for custom notifications
       };
 
-      const updatedNotifications = [newNotification, ...notifications].sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-      updateLocalStorageNotifications(updatedNotifications);
-      setNotifications(updatedNotifications);
-      
-      toast({
-        title: newNotification.title,
-        description: newNotification.message,
-      });
-      const audio = new Audio('/sounds/notification.mp3'); 
-      audio.play().catch(error => console.warn("Audio play failed (custom notification):", error));
-      
+      await addSharedNotificationToFirestore(newNotificationData);
+      // Toast and sound will be handled by GlobalNotificationListener
+      // We can still show a local confirmation toast if desired:
+      // toast({ title: "Notification envoyée", description: "Votre notification personnalisée a été envoyée." });
       form.reset();
     } catch (error) {
       console.error("Error sending custom notification:", error);
-      toast({ variant: "destructive", title: "Erreur", description: "Impossible d'envoyer la notification personnalisée." });
+      toast({ variant: "destructive", title: "Erreur d'envoi", description: `Impossible d'envoyer la notification. ${error instanceof Error ? error.message : ''}` });
     } finally {
       setIsSubmittingCustom(false);
     }
@@ -157,7 +181,7 @@ export default function NotificationsPage() {
                     Envoyer une Notification Manuelle
                 </CardTitle>
                 <CardDescription className="font-body">
-                    Créez une notification qui apparaîtra dans l'historique ci-dessous et sur le tableau de bord.
+                    Créez une notification qui apparaîtra dans l'historique ci-dessous et sera diffusée aux utilisateurs.
                 </CardDescription>
             </CardHeader>
             <CardContent>
@@ -211,34 +235,35 @@ export default function NotificationsPage() {
           <CardHeader>
             <div className="flex items-center justify-between">
                 <div className="flex-grow">
-                    <CardTitle className="font-headline">Historique des Notifications</CardTitle>
+                    <CardTitle className="font-headline">Historique des Notifications (depuis Firestore)</CardTitle>
                     <CardDescription className="font-body">
-                    Consultez l'historique de toutes les alertes et informations. Les nouvelles notifications apparaissent en haut.
+                    Consultez l'historique. L'état "Lu" est local à votre navigateur. La suppression retire de la base de données.
                     </CardDescription>
                 </div>
                 <div className="flex gap-2 flex-shrink-0">
-                    <Button variant="outline" className="font-body" onClick={handleMarkAllAsRead} disabled={notifications.every(n => n.isRead) || notifications.length === 0}>
-                    <Eye className="mr-2 h-4 w-4"/>Tout marquer lu
+                    <Button variant="outline" className="font-body" onClick={handleMarkAllAsRead} disabled={displayedNotifications.every(n => n.isRead) || displayedNotifications.length === 0}>
+                    <Eye className="mr-2 h-4 w-4"/>Tout marquer lu (local)
                     </Button>
-                    <Button variant="destructive" className="font-body" onClick={handleDeleteRead} disabled={notifications.filter(n => n.isRead).length === 0}>
-                    <Trash2 className="mr-2 h-4 w-4"/>Supprimer lues
+                    <Button variant="destructive" className="font-body" onClick={handleDeleteRead} disabled={isDeleting || displayedNotifications.filter(n => n.isRead).length === 0}>
+                     {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4"/>}
+                        Supprimer lues (BDD)
                     </Button>
                 </div>
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            {notifications.length === 0 && clientSideRendered ? (
-              <div className="text-center py-10 text-muted-foreground font-body">
-                <Bell className="h-12 w-12 mx-auto mb-4" />
-                <p>Aucune notification pour le moment.</p>
-              </div>
-            ) : !clientSideRendered ? (
+            {isLoading ? (
                  <div className="flex justify-center items-center py-10">
                     <Loader2 className="h-8 w-8 animate-spin text-primary" />
                     <p className="ml-2 font-body text-muted-foreground">Chargement des notifications...</p>
                 </div>
+            ) : displayedNotifications.length === 0 ? (
+              <div className="text-center py-10 text-muted-foreground font-body">
+                <Bell className="h-12 w-12 mx-auto mb-4" />
+                <p>Aucune notification pour le moment.</p>
+              </div>
             ) : (
-              notifications.map(notif => (
+              displayedNotifications.map(notif => (
                 <div
                   key={notif.id}
                   className={`flex items-start gap-4 p-4 rounded-lg border transition-all hover:shadow-md ${
@@ -249,12 +274,9 @@ export default function NotificationsPage() {
                   <div className="flex-grow">
                     <div className="flex justify-between items-start">
                       <h3 className={`font-semibold font-body ${!notif.isRead ? 'text-primary' : ''}`}>{notif.title}</h3>
-                      {clientSideRendered && (
                         <span className={`text-xs font-body ${!notif.isRead ? 'text-primary/80' : 'text-muted-foreground'}`}>
                           {new Date(notif.timestamp).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}
                         </span>
-                      )}
-                       {!clientSideRendered && <span className="text-xs font-body text-muted-foreground">Chargement...</span>}
                     </div>
                     <p className={`text-sm font-body ${!notif.isRead ? 'text-foreground' : 'text-muted-foreground'}`}>
                       {notif.message}
@@ -272,7 +294,7 @@ export default function NotificationsPage() {
                   </div>
                   {!notif.isRead && (
                     <Button variant="ghost" size="sm" className="flex-shrink-0 text-xs font-body" onClick={() => handleMarkAsRead(notif.id)}>
-                        Marquer lu
+                        Marquer lu (local)
                     </Button>
                   )}
                 </div>

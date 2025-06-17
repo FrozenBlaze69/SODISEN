@@ -31,6 +31,12 @@
 //          // ATTENTION : NON SÉCURISÉ POUR LA PRODUCTION !
 //          allow read, write: if true;
 //        }
+//        match /reservations/{reservationId} {
+//           allow read, write: if true; // Ajustez selon vos besoins d'authentification
+//        }
+//        match /notifications_shared/{notificationId} {
+//           allow read, write: if true; // Pour développement. Sécurisez en production.
+//        }
 //        // Ajoutez ici des règles pour d'autres collections si nécessaire
 //      }
 //    }
@@ -46,60 +52,42 @@
 // #####################################################################################
 
 import { db } from './config';
-import { collection, addDoc, updateDoc, doc, deleteDoc, serverTimestamp, setDoc } from "firebase/firestore";
-import { RESIDENTS_COLLECTION } from './constants';
-import type { Resident } from '@/types';
+import { collection, addDoc, updateDoc, doc, deleteDoc, serverTimestamp, setDoc, Timestamp } from "firebase/firestore";
+import { RESIDENTS_COLLECTION, NOTIFICATIONS_SHARED_COLLECTION } from './constants';
+import type { Resident, Notification as AppNotification } from '@/types';
 
-// Type pour les données envoyées pour ajouter/mettre à jour un résident
-// createdAt sera géré par serverTimestamp, id est généré ou fourni pour la mise à jour
+
 export type ResidentFormData = Omit<Resident, 'id' | 'createdAt'>;
+export type NotificationFormData = Omit<AppNotification, 'id' | 'timestamp'> & { timestamp?: Timestamp | Date };
 
-/**
- * Ajoute un nouveau résident ou met à jour un résident existant dans Firestore.
- * La collection `RESIDENTS_COLLECTION` (par exemple, "residents") sera automatiquement
- * créée dans Firestore si elle n'existe pas lors du premier ajout réussi d'un document,
- * À CONDITION QUE LES RÈGLES DE SÉCURITÉ LE PERMETTENT.
- * @param residentData Les données du résident à sauvegarder.
- * @param residentId L'ID du résident à mettre à jour. Si non fourni, un nouveau résident sera créé.
- * @returns L'ID du résident ajouté ou mis à jour.
- * @throws Error si la sauvegarde échoue (par exemple, à cause des règles de sécurité Firestore).
- */
+
 export async function addOrUpdateResident(residentData: ResidentFormData, residentId?: string): Promise<string> {
   try {
     const dataWithTimestamp = {
       ...residentData,
-      // Les champs array doivent être initialisés s'ils sont undefined
       allergies: residentData.allergies || [],
       contraindications: residentData.contraindications || [],
       textures: residentData.textures || [],
       diets: residentData.diets || [],
-      updatedAt: serverTimestamp(), // Toujours mettre à jour 'updatedAt'
+      updatedAt: serverTimestamp(), 
     };
 
     if (residentId) {
-      // Mise à jour d'un résident existant
       const residentDocRef = doc(db, RESIDENTS_COLLECTION, residentId);
-      // Utiliser setDoc avec merge: true pour mettre à jour ou créer si l'ID est connu mais le doc n'existe pas (moins probable ici)
-      // ou pour ne pas écraser les champs non fournis si on ne les envoie pas tous.
       await setDoc(residentDocRef, dataWithTimestamp, { merge: true }); 
       return residentId;
     } else {
-      // Ajout d'un nouveau résident
       const dataForAdd = {
         ...dataWithTimestamp,
-        createdAt: serverTimestamp(), // Ajouter 'createdAt' uniquement pour les nouveaux résidents
+        createdAt: serverTimestamp(), 
       };
       const docRef = await addDoc(collection(db, RESIDENTS_COLLECTION), dataForAdd);
       return docRef.id;
     }
   } catch (e) {
-    // Log de l'erreur côté serveur pour le débogage
     console.error("Error adding or updating document to Firestore: ", e);
-
-    // Construction d'un message d'erreur plus explicite
     let errorMessage = "Could not save resident due to an unknown server error.";
     if (e instanceof Error) {
-      // e.message contient souvent des informations utiles de Firebase (ex: "Missing or insufficient permissions.")
       errorMessage = `Impossible d'ajouter le résident. ${e.message}`;
     } else if (typeof e === 'string') {
       errorMessage = `Impossible d'ajouter le résident: ${e}`;
@@ -108,7 +96,6 @@ export async function addOrUpdateResident(residentData: ResidentFormData, reside
     } else if (e && typeof e === 'object' && 'toString' in e) {
       errorMessage = `Impossible d'ajouter le résident: ${e.toString()}`;
     }
-    // Renvoyer l'erreur pour qu'elle puisse être attrapée par le client (et affichée dans le toast)
     throw new Error(errorMessage);
   }
 }
@@ -134,11 +121,40 @@ export async function deleteResidentFromFirestore(residentId: string): Promise<v
     }
 }
 
-// NOTE POUR LE DÉVELOPPEMENT :
-// Si vous rencontrez des erreurs lors de l'ajout/modification/suppression :
-// 1. VÉRIFIEZ LA CONFIGURATION FIREBASE : src/lib/firebase/config.ts doit avoir les bonnes clés.
-// 2. VÉRIFIEZ LES RÈGLES DE SÉCURITÉ FIRESTORE : Dans la console Firebase, assurez-vous que les écritures
-//    sont autorisées pour la collection 'residents' (voir commentaire en haut de ce fichier).
-// 3. CONSULTEZ LA CONSOLE DU NAVIGATEUR ET DU SERVEUR (TERMINAL NEXTJS) : Des messages d'erreur
-//    plus détaillés y apparaîtront.
+
+export async function addSharedNotificationToFirestore(notificationData: NotificationFormData): Promise<string> {
+  try {
+    const dataToSave = {
+      ...notificationData,
+      timestamp: notificationData.timestamp instanceof Date 
+        ? Timestamp.fromDate(notificationData.timestamp) 
+        : serverTimestamp(),
+      isRead: false, // Default to unread, 'isRead' will be managed client-side locally or via different mechanism if per-user server-side
+    };
+    const docRef = await addDoc(collection(db, NOTIFICATIONS_SHARED_COLLECTION), dataToSave);
+    return docRef.id;
+  } catch (e) {
+    console.error("Error adding shared notification to Firestore: ", e);
+    let errorMessage = "Could not save notification.";
+     if (e instanceof Error) {
+      errorMessage = `Impossible d'enregistrer la notification. ${e.message}`;
+    }
+    throw new Error(errorMessage);
+  }
+}
+
+export async function deleteSharedNotificationFromFirestore(notificationId: string): Promise<void> {
+  try {
+    const notifDocRef = doc(db, NOTIFICATIONS_SHARED_COLLECTION, notificationId);
+    await deleteDoc(notifDocRef);
+  } catch (e) {
+    console.error("Error deleting shared notification from Firestore: ", e);
+    let errorMessage = "Could not delete notification.";
+    if (e instanceof Error) {
+      errorMessage = `Impossible de supprimer la notification: ${e.message}`;
+    }
+    throw new Error(errorMessage);
+  }
+}
     
+

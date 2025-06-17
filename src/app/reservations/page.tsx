@@ -31,11 +31,11 @@ import {
 } from "@/components/ui/alert-dialog";
 import { cn } from '@/lib/utils';
 import { useToast } from "@/hooks/use-toast";
-import type { MealReservationFormData, MealReservation, Notification } from '@/types';
+import type { MealReservationFormData, MealReservation, Notification, NotificationFormData } from '@/types';
 import { handleMealReservation, deleteReservationFromFirestore } from '@/app/actions';
 import { onReservationsUpdate } from '@/lib/firebase/firestoreClientService'; 
+import { addSharedNotificationToFirestore } from '@/lib/firebase/firestoreService';
 
-const SHARED_NOTIFICATIONS_KEY = 'sharedAppNotifications';
 
 const reservationFormSchema = z.object({
   residentName: z.string().min(2, { message: "Le nom du résident/personne est requis (minimum 2 caractères)." }),
@@ -118,41 +118,28 @@ export default function MealReservationPage() {
       const result = await handleMealReservation(serverActionData);
       
       if (result.success && result.reservationDetails) {
-        let toastTitle = "Réservation Effectuée";
-        let toastMessage = result.message; // Default to server message
-        let newResaNotificationForStorage: Notification | null = null;
-
-        if (clientSideRendered) {
-            try {
-                newResaNotificationForStorage = {
-                    id: `notif-resa-${Date.now()}-${Math.random().toString(36).substring(2,9)}`,
-                    timestamp: new Date().toISOString(),
-                    type: 'reservation_made', 
-                    title: 'Nouvelle Réservation Repas',
-                    message: `${result.reservationDetails.residentName} a une réservation pour ${result.reservationDetails.numberOfGuests} invité(s) le ${formatDateFn(parseISO(result.reservationDetails.mealDate), 'dd/MM/yyyy', { locale: fr })} (${result.reservationDetails.mealType === 'lunch' ? 'Déjeuner' : 'Dîner'}).`,
-                    isRead: false,
-                };
-                toastTitle = newResaNotificationForStorage.title;
-                toastMessage = newResaNotificationForStorage.message;
-
-                const existingNotificationsRaw = localStorage.getItem(SHARED_NOTIFICATIONS_KEY);
-                let allNotifications: Notification[] = existingNotificationsRaw ? JSON.parse(existingNotificationsRaw) : [];
-                allNotifications = [newResaNotificationForStorage, ...allNotifications].sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-                localStorage.setItem(SHARED_NOTIFICATIONS_KEY, JSON.stringify(allNotifications));
-
-            } catch (notifError) {
-                console.error("Error processing/saving reservation notification to localStorage:", notifError);
-                toast({ variant: "destructive", title: "Erreur Locale Notification", description: "La notification de réservation n'a pas pu être sauvegardée localement." });
-            }
+        const details = result.reservationDetails;
+        const notificationMessage = `${details.residentName} a une réservation pour ${details.numberOfGuests} invité(s) le ${formatDateFn(parseISO(details.mealDate), 'dd/MM/yyyy', { locale: fr })} (${details.mealType === 'lunch' ? 'Déjeuner' : 'Dîner'}).`;
+        
+        const newNotificationData: NotificationFormData = {
+            timestamp: new Date(),
+            type: 'reservation_made', 
+            title: 'Nouvelle Réservation Repas',
+            message: notificationMessage,
+        };
+        
+        try {
+            await addSharedNotificationToFirestore(newNotificationData);
+            // Toast and sound will be handled by GlobalNotificationListener
+        } catch (notifError) {
+            console.error("Error creating shared notification for reservation:", notifError);
+            toast({ variant: "destructive", title: "Erreur Notification", description: "La réservation a été enregistrée, mais la notification n'a pas pu être envoyée." });
         }
         
-        toast({
-          title: toastTitle,
-          description: toastMessage,
+        toast({ // Still show local toast for immediate feedback on this page
+          title: "Réservation Effectuée",
+          description: result.message, 
         });
-
-        const audio = new Audio('/sounds/notification.mp3');
-        audio.play().catch(error => console.warn("Audio play failed (reservation):", error));
         
         form.reset({
           residentName: '',

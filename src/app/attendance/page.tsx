@@ -11,9 +11,10 @@ import { Save, Undo, ChevronLeft, ChevronRight, Loader2, Users, Building } from 
 import Image from 'next/image';
 import { onResidentsUpdate } from '@/lib/firebase/firestoreClientService';
 import { useToast } from "@/hooks/use-toast";
+import { addSharedNotificationToFirestore } from '@/lib/firebase/firestoreService';
 
 const LOCAL_STORAGE_ATTENDANCE_KEY_PREFIX = 'simulatedDailyAttendance_';
-const SHARED_NOTIFICATIONS_KEY = 'sharedAppNotifications';
+// SHARED_NOTIFICATIONS_KEY no longer used for writing, global listener handles Firestore
 
 type OptimizedAttendanceData = Record<string, {
   [key in MealType]?: { status: AttendanceStatus; mealLocation: MealLocation; notes?: string }
@@ -71,6 +72,7 @@ const getUnitColorClass = (unitName: string | undefined): string => {
   if (name.includes('jardin')) return 'bg-pink-100 border-pink-300 text-pink-800 hover:bg-pink-200/80';
   if (name.includes('vignes')) return 'bg-purple-100 border-purple-300 text-purple-800 hover:bg-purple-200/80';
   if (name.includes('colline')) return 'bg-yellow-100 border-yellow-300 text-yellow-800 hover:bg-yellow-200/80';
+  // Forêt is now emerald-100 (lighter)
   if (name.includes('forêt')) return 'bg-emerald-100 border-emerald-300 text-emerald-800 hover:bg-emerald-200/80';
   if (name.includes('rivière') || name.includes('riviere')) return 'bg-blue-100 border-blue-300 text-blue-800 hover:bg-blue-200/80';
   if (name.includes('roseau')) return 'bg-lime-100 border-lime-300 text-lime-800 hover:bg-lime-200/80';
@@ -78,7 +80,6 @@ const getUnitColorClass = (unitName: string | undefined): string => {
   
   if (name.includes('mer') || name.includes('océan')) return 'bg-blue-100 border-blue-300 text-blue-800 hover:bg-blue-200/80';
   if (name.includes('lavande') || name.includes('violet') || name.includes('aurore') || name.includes('lilas') || name.includes('améthyste')) return 'bg-purple-100 border-purple-300 text-purple-800 hover:bg-purple-200/80';
-  // if (name.includes('vert') || name.includes('prairie') || name.includes('émeraude')) return 'bg-emerald-100 border-emerald-300 text-emerald-800 hover:bg-emerald-200/80'; // Already covered by 'forêt' specific or general emerald
   if (name.includes('jaune') || name.includes('soleil') || name.includes('lumière') || name.includes('mimosa') || name.includes('citron')) return 'bg-yellow-100 border-yellow-300 text-yellow-800 hover:bg-yellow-200/80';
   if (name.includes('orange') || name.includes('coucher') || name.includes('automne') || name.includes('mandarine') || name.includes('abricot')) return 'bg-orange-100 border-orange-300 text-orange-800 hover:bg-orange-200/80';
   if (name.includes('rouge') || name.includes('passion') || name.includes('volcan') || name.includes('rubis') || name.includes('coquelicot')) return 'bg-red-100 border-red-300 text-red-800 hover:bg-red-200/80';
@@ -109,7 +110,7 @@ export default function AttendancePage() {
 
   useEffect(() => {
     if (!todayIso || !currentLocalStorageKey) {
-      setIsLoading(true); // Keep loading if date is not set
+      setIsLoading(true); 
       return;
     }
     
@@ -251,7 +252,7 @@ export default function AttendancePage() {
   };
 
 
-  const handleSaveAttendances = () => {
+  const handleSaveAttendances = async () => {
     if (!todayIso) return;
     try {
       const dataToSave: AttendanceRecord[] = Object.entries(attendanceData).flatMap(([residentId, meals]) =>
@@ -273,7 +274,7 @@ export default function AttendancePage() {
         localStorage.setItem(currentLocalStorageKey, JSON.stringify(dataToSave));
       }
       
-      const newNotifications: Notification[] = [];
+      const notificationPromises: Promise<any>[] = [];
       const residentMap = new Map(residents.map(r => [r.id, r]));
 
       Object.keys(attendanceData).forEach(residentId => {
@@ -287,70 +288,51 @@ export default function AttendancePage() {
           if (!currentData || !initialData) return; 
 
           if (currentData.status !== initialData.status) {
-            newNotifications.push({
-              id: `notif-${Date.now()}-${residentId}-${mealType}-status-${Math.random().toString(36).substring(2, 9)}`,
+            const newNotification: Omit<Notification, 'id'> = {
               timestamp: new Date().toISOString(),
               type: currentData.status === 'absent' || currentData.status === 'external' ? 'absence' : 'attendance',
               title: `Changement de Présence`,
               message: `${resident.firstName} ${resident.lastName} est maintenant ${translateStatus(currentData.status)} pour ${translateMealType(mealType)}. (Unité: ${resident.unit || 'N/A'})`,
               isRead: false,
               relatedResidentId: residentId,
-            });
+            };
+            notificationPromises.push(addSharedNotificationToFirestore(newNotification));
           }
 
           if (currentData.status === 'present' && initialData.status === 'present' && 
               currentData.mealLocation !== initialData.mealLocation && 
               currentData.mealLocation !== 'not_applicable') {
-             newNotifications.push({
-                id: `notif-${Date.now()}-${residentId}-${mealType}-location-${Math.random().toString(36).substring(2, 9)}`,
+             const newNotification: Omit<Notification, 'id'> = {
                 timestamp: new Date().toISOString(),
                 type: 'info',
                 title: `Changement Lieu Repas`,
                 message: `${resident.firstName} ${resident.lastName} mangera ${translateMealLocation(currentData.mealLocation)} pour ${translateMealType(mealType)}. (Unité: ${resident.unit || 'N/A'})`,
                 isRead: false,
                 relatedResidentId: residentId,
-            });
+            };
+            notificationPromises.push(addSharedNotificationToFirestore(newNotification));
           }
         });
       });
 
-      if (newNotifications.length > 0) {
-        try {
-          const existingNotificationsRaw = localStorage.getItem(SHARED_NOTIFICATIONS_KEY);
-          let allNotifications: Notification[] = existingNotificationsRaw ? JSON.parse(existingNotificationsRaw) : [];
-          allNotifications = [...newNotifications, ...allNotifications].sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-          localStorage.setItem(SHARED_NOTIFICATIONS_KEY, JSON.stringify(allNotifications));
-
-          newNotifications.forEach(notif => {
-            toast({
-              title: notif.title,
-              description: notif.message,
-            });
-          });
-          
-          const audio = new Audio('/sounds/notification.mp3');
-          audio.play().catch(error => console.warn("Audio play failed (attendance):", error));
-
-        } catch (e) {
-          console.error("Error saving new notifications to localStorage or playing sound:", e);
-          toast({ variant: "destructive", title: "Erreur Notifications", description: "Impossible de sauvegarder/notifier les nouvelles alertes." });
-        }
-      }
+      await Promise.all(notificationPromises);
 
       setInitialAttendanceDataForUndo(deepCopyOptimizedAttendance(attendanceData));
-      if (newNotifications.length === 0) {
-        toast({ title: "Présences Enregistrées", description: "Aucune nouvelle notification générée. Les présences ont été sauvegardées." });
+      if (notificationPromises.length === 0) {
+        toast({ title: "Présences Enregistrées", description: "Aucune nouvelle notification générée par des changements. Les présences ont été sauvegardées localement." });
+      } else {
+         toast({ title: "Présences Enregistrées et Notifiées", description: `${notificationPromises.length} notification(s) ont été envoyée(s) suite aux changements.` });
       }
 
     } catch (e) {
-      console.error("Error saving attendance to localStorage", e);
-      toast({ variant: "destructive", title: "Erreur de Sauvegarde", description: "Impossible de sauvegarder les présences." });
+      console.error("Error saving attendance to localStorage or sending notifications:", e);
+      toast({ variant: "destructive", title: "Erreur de Sauvegarde", description: `Impossible de sauvegarder les présences ou d'envoyer des notifications. ${e instanceof Error ? e.message : ''}` });
     }
   };
 
   const handleUndoChanges = () => {
     setAttendanceData(deepCopyOptimizedAttendance(initialAttendanceDataForUndo));
-    toast({ title: "Modifications Annulées", description: "Les présences ont été réinitialisées." });
+    toast({ title: "Modifications Annulées", description: "Les présences ont été réinitialisées à leur état avant modification." });
   };
 
   if (isLoading || !todayIso) {
@@ -371,12 +353,12 @@ export default function AttendancePage() {
           <h1 className="text-3xl font-headline font-semibold text-foreground">Suivi des Présences</h1>
           <div className="flex items-center gap-2">
             <Button variant="outline" size="icon" disabled><ChevronLeft className="h-4 w-4"/></Button>
-            <Select defaultValue={todayIso} disabled>
+            <Select value={todayIso || ''} disabled>
               <SelectTrigger className="w-[180px] font-body">
                 <SelectValue placeholder="Choisir une date" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={todayIso}>{new Date(todayIso + 'T00:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}</SelectItem>
+                 {todayIso && <SelectItem value={todayIso}>{new Date(todayIso + 'T00:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}</SelectItem>}
               </SelectContent>
             </Select>
             <Button variant="outline" size="icon" disabled><ChevronRight className="h-4 w-4"/></Button>
@@ -395,7 +377,7 @@ export default function AttendancePage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="font-headline">Grille des Présences du {new Date(todayIso + 'T00:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}</CardTitle>
+            <CardTitle className="font-headline">Grille des Présences du {todayIso ? new Date(todayIso + 'T00:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }) : '...'}</CardTitle>
             <CardDescription className="font-body">
               Modifiez les présences et cliquez sur "Enregistrer Présences". Les résidents sont groupés par unité avec des couleurs distinctes pour chaque en-tête d'unité. Les notes générales sont partagées pour tous les repas du résident pour ce jour.
             </CardDescription>
@@ -510,4 +492,3 @@ export default function AttendancePage() {
     </AppLayout>
   );
 }
-

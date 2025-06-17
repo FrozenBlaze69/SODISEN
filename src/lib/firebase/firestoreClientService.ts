@@ -1,8 +1,8 @@
 
 import { db } from './config';
-import { collection, onSnapshot, query, orderBy, Timestamp } from "firebase/firestore";
-import type { Resident, MealReservation } from '@/types';
-import { RESIDENTS_COLLECTION, RESERVATIONS_COLLECTION } from './constants';
+import { collection, onSnapshot, query, orderBy, Timestamp, limit, where, getDocs, DocumentData } from "firebase/firestore";
+import type { Resident, MealReservation, Notification as AppNotification } from '@/types';
+import { RESIDENTS_COLLECTION, RESERVATIONS_COLLECTION, NOTIFICATIONS_SHARED_COLLECTION } from './constants';
 
 const mockResidentsForPreview: Resident[] = [
   {
@@ -196,8 +196,6 @@ export function onResidentsUpdate(
     if (onError) {
       onError(error);
     }
-    // Fallback to mock data if there's an error (e.g. permission denied)
-    // This helps in development if Firestore rules are not set up yet.
     callback(mockResidentsForPreview);
   });
 
@@ -217,7 +215,7 @@ export function onReservationsUpdate(
       reservationsList.push({
         id: doc.id,
         residentName: data.residentName || "N/A",
-        mealDate: data.mealDate, // Should be YYYY-MM-DD string
+        mealDate: data.mealDate, 
         mealType: data.mealType,
         numberOfGuests: data.numberOfGuests || 0,
         comments: data.comments || "",
@@ -231,9 +229,72 @@ export function onReservationsUpdate(
     if (onError) {
       onError(error);
     }
-    // If there's an error, provide an empty list rather than mock data for reservations.
     callback([]);
   });
 
   return unsubscribe;
+}
+
+function processNotificationDoc(doc: DocumentData): AppNotification {
+    const data = doc.data();
+    return {
+        id: doc.id,
+        timestamp: data.timestamp instanceof Timestamp ? data.timestamp.toDate().toISOString() : new Date().toISOString(),
+        type: data.type || 'info',
+        title: data.title || "Notification",
+        message: data.message || "",
+        isRead: data.isRead || false, // Firestore 'isRead' might not be used if managed locally
+        relatedResidentId: data.relatedResidentId,
+    };
+}
+
+export function onSharedNotificationsUpdate(
+  callback: (notifications: AppNotification[], newNotifications: AppNotification[]) => void,
+  onError?: (error: Error) => void
+): () => void {
+  const q = query(collection(db, NOTIFICATIONS_SHARED_COLLECTION), orderBy("timestamp", "desc"), limit(50)); // Limit for performance
+
+  const unsubscribe = onSnapshot(q, (snapshot) => {
+    const allNotifications: AppNotification[] = [];
+    const newNotificationsBatch: AppNotification[] = [];
+
+    snapshot.docChanges().forEach((change) => {
+      if (change.type === "added") {
+        // Check if the notification is recent enough to be considered "new" for a sound/toast
+        // This simple check assumes new additions are "new" for the global listener
+        // More sophisticated logic might be needed (e.g., based on client's last seen timestamp)
+        newNotificationsBatch.push(processNotificationDoc(change.doc));
+      }
+    });
+    
+    snapshot.docs.forEach(doc => {
+        allNotifications.push(processNotificationDoc(doc));
+    });
+
+    callback(allNotifications, newNotificationsBatch);
+  }, (error) => {
+    console.error("Error listening to shared notifications collection: ", error);
+    if (onError) {
+      onError(error);
+    }
+    callback([], []);
+  });
+
+  return unsubscribe;
+}
+
+// Initial fetch for notifications page - might not be needed if onSnapshot is sufficient
+export async function getInitialSharedNotifications(limitCount: number = 50): Promise<AppNotification[]> {
+  try {
+    const q = query(collection(db, NOTIFICATIONS_SHARED_COLLECTION), orderBy("timestamp", "desc"), limit(limitCount));
+    const querySnapshot = await getDocs(q);
+    const notificationsList: AppNotification[] = [];
+    querySnapshot.forEach((doc) => {
+      notificationsList.push(processNotificationDoc(doc));
+    });
+    return notificationsList;
+  } catch (error) {
+    console.error("Error fetching initial shared notifications: ", error);
+    return [];
+  }
 }
