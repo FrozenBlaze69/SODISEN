@@ -80,8 +80,8 @@ export default function MealReservationPage() {
         setReservationsList([]);
       }
     );
-    return () => unsubscribe(); // Cleanup listener on component unmount
-  }, [toast]);
+    return () => unsubscribe(); 
+  }, []);
 
 
   const form = useForm<ReservationFormValues>({
@@ -106,13 +106,11 @@ export default function MealReservationPage() {
       const result = await handleMealReservation(serverActionData);
       
       if (result.success && result.reservationDetails) {
-        // The list will update via the Firestore listener, so no need to manually update state here.
         toast({
           title: "Réservation enregistrée",
           description: result.message,
         });
 
-        // Create and store notification in localStorage
         if (clientSideRendered) {
             try {
                 const newNotification: Notification = {
@@ -125,7 +123,7 @@ export default function MealReservationPage() {
                 };
                 const existingNotificationsRaw = localStorage.getItem(SHARED_NOTIFICATIONS_KEY);
                 let allNotifications: Notification[] = existingNotificationsRaw ? JSON.parse(existingNotificationsRaw) : [];
-                allNotifications = [newNotification, ...allNotifications]; // Add to the beginning
+                allNotifications = [newNotification, ...allNotifications]; 
                 localStorage.setItem(SHARED_NOTIFICATIONS_KEY, JSON.stringify(allNotifications));
             } catch (notifError) {
                 console.error("Error saving reservation notification to localStorage:", notifError);
@@ -166,10 +164,9 @@ export default function MealReservationPage() {
     }
 
     if (window.confirm(`Êtes-vous sûr de vouloir supprimer cette réservation (ID: ${reservationId}) ? Cette action est irréversible.`)) {
-      setIsSubmitting(true); // Indicate processing for delete as well
+      setIsSubmitting(true); 
       const result = await deleteReservationFromFirestore(reservationId);
       if (result.success) {
-        // List will update via Firestore listener
         toast({ title: "Réservation supprimée", description: result.message });
       } else {
         toast({
@@ -346,7 +343,7 @@ export default function MealReservationPage() {
                 Liste des Réservations Enregistrées
             </CardTitle>
             <CardDescription className="font-body">
-                Visualisez ici les réservations de repas pour les invités, récupérées depuis la base de données.
+                Visualisez ici les réservations de repas pour les invités, récupérées depuis la base de données. La liste est mise à jour en temps réel.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -355,7 +352,7 @@ export default function MealReservationPage() {
                     <Loader2 className="h-8 w-8 animate-spin text-primary" />
                     <p className="ml-2 font-body text-muted-foreground">Chargement des réservations...</p>
                 </div>
-            ) : !clientSideRendered && !isLoadingReservations ? ( // Initial server render or if loading is somehow false before client render
+            ) : !clientSideRendered && !isLoadingReservations ? ( 
                  <div className="flex justify-center items-center py-10">
                     <Loader2 className="h-8 w-8 animate-spin text-primary" />
                     <p className="ml-2 font-body text-muted-foreground">Initialisation...</p>
@@ -404,10 +401,11 @@ export default function MealReservationPage() {
             )}
           </CardContent>
            <CardFooter>
-             <p className="text-xs text-muted-foreground font-body">Les réservations sont désormais stockées et lues depuis la base de données Firestore.</p>
+             <p className="text-xs text-muted-foreground font-body">Les réservations sont désormais stockées et lues depuis la base de données Firestore en temps réel.</p>
            </CardFooter>
         </Card>
       </div>
     </AppLayout>
   );
 }
+
