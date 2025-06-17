@@ -12,25 +12,23 @@ import Link from 'next/link';
 import { Input } from '@/components/ui/input';
 import { useToast } from "@/hooks/use-toast";
 import { handleMenuUpload } from './actions';
-import { format, parseISO, isToday } from 'date-fns';
+import { format, parseISO, isToday as dateIsToday } from 'date-fns'; // Renamed isToday to avoid conflict
 import { onResidentsUpdate } from '@/lib/firebase/firestoreClientService';
-import { onReservationsUpdate } from '@/lib/firebase/firestoreClientService'; 
+import { onReservationsUpdate } from '@/lib/firebase/firestoreClientService';
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
-
-export const todayISO = new Date().toISOString().split('T')[0]; 
+// REMOVED: export const todayISO = new Date().toISOString().split('T')[0];
 const LOCAL_STORAGE_ATTENDANCE_KEY_PREFIX = 'simulatedDailyAttendance_';
-const SHARED_NOTIFICATIONS_KEY = 'sharedAppNotifications'; 
+const SHARED_NOTIFICATIONS_KEY = 'sharedAppNotifications';
 const LOCAL_STORAGE_WEEKLY_PLAN_FILE_NAME_KEY = 'currentWeeklyPlanFileName';
-
 
 const LUNCH_HOUR_THRESHOLD = 14; // Switch to dinner view at 2 PM
 
+// This mock data is less critical now as we fetch based on client-determined date
+// It might still be used if localStorage is empty for the *actual* current day on client.
 export const mockAttendanceFallback: AttendanceRecord[] = [
-  { id: 'att_fb_1_lunch', residentId: 'residentId1_from_firestore', date: todayISO, mealType: 'lunch', status: 'present', mealLocation: 'dining_hall' },
-  { id: 'att_fb_2_lunch', residentId: 'residentId2_from_firestore', date: todayISO, mealType: 'lunch', status: 'present', mealLocation: 'room' },
-  { id: 'att_fb_3_lunch', residentId: 'residentId3_from_firestore', date: todayISO, mealType: 'lunch', status: 'absent', notes: 'Rendez-vous coiffeur', mealLocation: 'not_applicable' },
-  { id: 'att_fb_1_dinner', residentId: 'residentId1_from_firestore', date: todayISO, mealType: 'dinner', status: 'present', mealLocation: 'dining_hall' },
+  // { id: 'att_fb_1_lunch', residentId: 'residentId1_from_firestore', date: todayISO, mealType: 'lunch', status: 'present', mealLocation: 'dining_hall' },
+  // ... (ensure date here matches how todayISO would be if needed, or remove if logic relies on empty array)
 ];
 
 
@@ -73,11 +71,12 @@ const plannedItemToMeal = (item: PlannedMealItem, mealType: MealType): Meal => (
 
 
 export default function DashboardPage() {
+  const [currentDateISO, setCurrentDateISO] = useState<string | null>(null);
   const [allResidents, setAllResidents] = useState<Resident[]>([]);
   const [isLoadingResidents, setIsLoadingResidents] = useState(true);
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
+
   const [importedWeeklyPlan, setImportedWeeklyPlan] = useState<WeeklyDayPlan[] | null>(null);
   const [importedFileName, setImportedFileName] = useState<string | null>(null);
   const [clientSideRendered, setClientSideRendered] = useState(false);
@@ -89,26 +88,33 @@ export default function DashboardPage() {
   const [currentTime, setCurrentTime] = useState<string | null>(null);
   const [allergyConflictAlerts, setAllergyConflictAlerts] = useState<string[]>([]);
 
-
   useEffect(() => {
+    // Determine current date on client side after mount
+    const today = new Date().toISOString().split('T')[0];
+    setCurrentDateISO(today);
+    setClientSideRendered(true); // Indicate client environment is ready
+
     const updateCurrentTimeAndFocus = () => {
         const now = new Date();
         setCurrentTime(now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit'}));
         const currentHour = now.getHours();
         setCurrentMealFocus(currentHour < LUNCH_HOUR_THRESHOLD ? 'lunch' : 'dinner');
     };
-    updateCurrentTimeAndFocus(); 
-    const timerId = setInterval(updateCurrentTimeAndFocus, 60000); 
+    updateCurrentTimeAndFocus();
+    const timerId = setInterval(updateCurrentTimeAndFocus, 60000);
 
     return () => clearInterval(timerId);
   }, []);
 
+  const currentAttendanceKey = useMemo(() => {
+    if (!currentDateISO) return null;
+    return `${LOCAL_STORAGE_ATTENDANCE_KEY_PREFIX}${currentDateISO}`;
+  }, [currentDateISO]);
 
-  const currentAttendanceKey = `${LOCAL_STORAGE_ATTENDANCE_KEY_PREFIX}${todayISO}`;
 
   useEffect(() => {
-    setClientSideRendered(true);
-    
+    if (!clientSideRendered || !currentDateISO || !currentAttendanceKey) return; // Ensure date and key are set
+
     const storedPlan = localStorage.getItem('currentWeeklyPlan');
     if (storedPlan) {
       try {
@@ -128,11 +134,11 @@ export default function DashboardPage() {
       if (storedAttendance) {
         setDailyAttendanceRecords(JSON.parse(storedAttendance) as AttendanceRecord[]);
       } else {
-        setDailyAttendanceRecords(mockAttendanceFallback); 
+        setDailyAttendanceRecords([]); // Default to empty if no attendance for this specific day
       }
     } catch (e) {
       console.error("Error reading daily attendance from localStorage for dashboard", e);
-      setDailyAttendanceRecords(mockAttendanceFallback); 
+      setDailyAttendanceRecords([]);
     }
 
     setIsLoadingReservations(true);
@@ -162,11 +168,11 @@ export default function DashboardPage() {
         if (loadedNotifications.length > 0) {
             setDashboardNotifications(loadedNotifications.sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
         } else {
-            setDashboardNotifications([]); 
+            setDashboardNotifications([]);
         }
     } catch (error) {
         console.error("Error loading notifications from localStorage for dashboard:", error);
-        setDashboardNotifications([]); 
+        setDashboardNotifications([]);
     }
 
     setIsLoadingResidents(true);
@@ -181,7 +187,7 @@ export default function DashboardPage() {
             variant: "destructive",
             duration: 10000,
         });
-        setAllResidents([]); 
+        setAllResidents([]);
         setIsLoadingResidents(false);
     });
     return () => {
@@ -189,15 +195,17 @@ export default function DashboardPage() {
       unsubscribeReservations();
     };
 
-  }, [currentAttendanceKey, toast]); 
+  }, [clientSideRendered, currentDateISO, currentAttendanceKey, toast]);
 
   const activeResidents = useMemo(() => allResidents.filter(r => r.isActive), [allResidents]);
 
   const mealsForFocusedMeal = useMemo(() => {
+    if (!currentDateISO) return currentMealFocus === 'lunch' ? initialMockMealsTodayForLunchDashboard : initialMockMealsTodayForDinnerDashboard;
+
     const defaultMeals = currentMealFocus === 'lunch' ? initialMockMealsTodayForLunchDashboard : initialMockMealsTodayForDinnerDashboard;
     if (!importedWeeklyPlan) return defaultMeals;
-    
-    const todayPlan = importedWeeklyPlan.find(dayPlan => isToday(parseISO(dayPlan.date)));
+
+    const todayPlan = importedWeeklyPlan.find(dayPlan => dateIsToday(parseISO(dayPlan.date)));
     if (!todayPlan) return defaultMeals;
 
     const mealData = currentMealFocus === 'lunch' ? todayPlan.meals.lunch : todayPlan.meals.dinner;
@@ -205,56 +213,58 @@ export default function DashboardPage() {
     if (mealData.starter) todaysFocusedMeals.push(plannedItemToMeal(mealData.starter, currentMealFocus));
     if (mealData.main) todaysFocusedMeals.push(plannedItemToMeal(mealData.main, currentMealFocus));
     if (mealData.dessert) todaysFocusedMeals.push(plannedItemToMeal(mealData.dessert, currentMealFocus));
-    
+
     return todaysFocusedMeals.length > 0 ? todaysFocusedMeals : defaultMeals;
-  }, [importedWeeklyPlan, currentMealFocus]);
-  
+  }, [importedWeeklyPlan, currentMealFocus, currentDateISO]);
+
   const isDisplayingImportedMenuForFocusedMeal = useMemo(() => {
-    if (!importedWeeklyPlan) return false;
-    const todayPlan = importedWeeklyPlan.find(dayPlan => isToday(parseISO(dayPlan.date)));
+    if (!currentDateISO || !importedWeeklyPlan) return false;
+    const todayPlan = importedWeeklyPlan.find(dayPlan => dateIsToday(parseISO(dayPlan.date)));
     if (!todayPlan) return false;
     const mealData = currentMealFocus === 'lunch' ? todayPlan.meals.lunch : todayPlan.meals.dinner;
     return !!(mealData.starter || mealData.main || mealData.dessert);
-  }, [importedWeeklyPlan, currentMealFocus]);
+  }, [importedWeeklyPlan, currentMealFocus, currentDateISO]);
 
   const presentAttendancesForFocusedMeal = useMemo(() => {
-    return dailyAttendanceRecords.filter(a => 
-      a.mealType === currentMealFocus && 
-      a.status === 'present' && 
-      a.date === todayISO &&
-      activeResidents.some(ar => ar.id === a.residentId) 
+    if (!currentDateISO) return [];
+    return dailyAttendanceRecords.filter(a =>
+      a.mealType === currentMealFocus &&
+      a.status === 'present' &&
+      a.date === currentDateISO &&
+      activeResidents.some(ar => ar.id === a.residentId)
     );
-  }, [activeResidents, dailyAttendanceRecords, currentMealFocus]);
+  }, [activeResidents, dailyAttendanceRecords, currentMealFocus, currentDateISO]);
 
   const totalGuestsForFocusedMeal = useMemo(() => {
-    if (!clientSideRendered || isLoadingReservations) return 0; 
+    if (!clientSideRendered || isLoadingReservations || !currentDateISO) return 0;
     return allReservations
-      .filter(res => res.mealDate === todayISO && res.mealType === currentMealFocus)
+      .filter(res => res.mealDate === currentDateISO && res.mealType === currentMealFocus)
       .reduce((sum, res) => sum + res.numberOfGuests, 0);
-  }, [allReservations, currentMealFocus, clientSideRendered, isLoadingReservations]);
-  
+  }, [allReservations, currentMealFocus, clientSideRendered, isLoadingReservations, currentDateISO]);
+
 
   const totalActiveResidentsCount = activeResidents.length;
   const presentResidentsCountForFocusedMeal = presentAttendancesForFocusedMeal.length;
-  
+
   const totalMealsToPrepare = useMemo(() => {
-    if (isLoadingResidents || isLoadingReservations) return 0; 
+    if (isLoadingResidents || isLoadingReservations || !currentDateISO) return 0;
     return presentResidentsCountForFocusedMeal + totalGuestsForFocusedMeal;
-  }, [isLoadingResidents, isLoadingReservations, presentResidentsCountForFocusedMeal, totalGuestsForFocusedMeal]);
+  }, [isLoadingResidents, isLoadingReservations, presentResidentsCountForFocusedMeal, totalGuestsForFocusedMeal, currentDateISO]);
 
 
   const dietSpecificMealsForFocusedMeal = useMemo(() => {
+    if (!currentDateISO) return { 'Sans sel': 0, 'Végétarien': 0, 'Mixé': 0, 'Haché': 0 };
     const presentRes = presentAttendancesForFocusedMeal
       .map(att => activeResidents.find(r => r.id === att.residentId))
       .filter((r): r is Resident => !!r);
-    
+
     return {
     'Sans sel': presentRes.filter(r => r.diets.includes('Sans sel')).length,
     'Végétarien': presentRes.filter(r => r.diets.includes('Végétarien')).length,
     'Mixé': presentRes.filter(r => getPreparationTypeForResident(r).startsWith('Mixé')).length,
     'Haché': presentRes.filter(r => getPreparationTypeForResident(r).startsWith('Haché')).length,
     };
-  }, [presentAttendancesForFocusedMeal, activeResidents]);
+  }, [presentAttendancesForFocusedMeal, activeResidents, currentDateISO]);
 
   const getNotificationIcon = (type: Notification['type']) => {
     switch (type) {
@@ -273,7 +283,7 @@ export default function DashboardPage() {
         return <CheckCircle2 className="h-5 w-5 text-green-500" />;
     }
   };
-  
+
 
   const globalTextureCountsForFocusedMeal = useMemo(() => {
     const counts: Record<PreparationType, number> = {
@@ -283,6 +293,8 @@ export default function DashboardPage() {
       'Haché fin': 0,
       'Haché gros': 0,
     };
+    if (!currentDateISO) return counts;
+
     presentAttendancesForFocusedMeal.forEach(att => {
         const resident = activeResidents.find(r => r.id === att.residentId);
         if (resident) {
@@ -290,16 +302,16 @@ export default function DashboardPage() {
             counts[prepType]++;
         }
     });
-    // Add guests to the 'Normal' count
-    if (!isLoadingReservations) { // Ensure guests count is stable
+
+    if (!isLoadingReservations) {
         counts['Normal'] += totalGuestsForFocusedMeal;
     }
     return counts;
-  }, [presentAttendancesForFocusedMeal, activeResidents, totalGuestsForFocusedMeal, isLoadingReservations]);
+  }, [presentAttendancesForFocusedMeal, activeResidents, totalGuestsForFocusedMeal, isLoadingReservations, currentDateISO]);
 
 
   useEffect(() => {
-    if (!clientSideRendered || isLoadingResidents || !mealsForFocusedMeal.length || !activeResidents.length) {
+    if (!clientSideRendered || isLoadingResidents || !mealsForFocusedMeal.length || !activeResidents.length || !currentDateISO) {
       setAllergyConflictAlerts([]);
       return;
     }
@@ -333,7 +345,8 @@ export default function DashboardPage() {
     isLoadingResidents,
     mealsForFocusedMeal,
     presentAttendancesForFocusedMeal,
-    activeResidents
+    activeResidents,
+    currentDateISO
   ]);
 
 
@@ -358,7 +371,7 @@ export default function DashboardPage() {
         setImportedWeeklyPlan(result.menuData as WeeklyDayPlan[]);
         setImportedFileName(result.fileName || null);
         localStorage.setItem('currentWeeklyPlan', JSON.stringify(result.menuData));
-        if(result.fileName) localStorage.setItem(LOCAL_STORAGE_WEEKLY_PLAN_FILE_NAME_KEY, result.fileName); 
+        if(result.fileName) localStorage.setItem(LOCAL_STORAGE_WEEKLY_PLAN_FILE_NAME_KEY, result.fileName);
         else localStorage.removeItem(LOCAL_STORAGE_WEEKLY_PLAN_FILE_NAME_KEY);
 
         if (fileInputRef.current) fileInputRef.current.value = "";
@@ -387,9 +400,10 @@ export default function DashboardPage() {
 
   const focusedMealText = currentMealFocus === 'lunch' ? 'Déjeuner' : 'Dîner';
 
-  const overallLoading = isLoadingResidents || isLoadingReservations;
+  const isCoreDataLoading = !currentDateISO || isLoadingResidents || isLoadingReservations || !clientSideRendered;
 
-  if (overallLoading && !clientSideRendered) { 
+
+  if (isCoreDataLoading) {
     return (
       <AppLayout>
         <div className="flex h-[calc(100vh-var(--header-height)-2rem)] items-center justify-center">
@@ -407,7 +421,7 @@ export default function DashboardPage() {
             <h1 className="text-3xl font-headline font-semibold text-foreground">Tableau de Bord</h1>
             {clientSideRendered && currentTime && (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground font-body">
-                    <Clock className="h-4 w-4"/> 
+                    <Clock className="h-4 w-4"/>
                     <span>{currentTime} - Vue actuelle: <span className="font-semibold text-primary">{focusedMealText}</span></span>
                 </div>
             )}
@@ -429,7 +443,7 @@ export default function DashboardPage() {
                 <AlertDescription className="space-y-1.5">
                   {allergyConflictAlerts.map((alertMsg, index) => (
                     <div key={index} className="text-sm font-body text-destructive-foreground bg-destructive/10 p-2 rounded-md flex items-start">
-                       <IconAlertTriangle className="h-4 w-4 mr-2 mt-0.5 flex-shrink-0" /> 
+                       <IconAlertTriangle className="h-4 w-4 mr-2 mt-0.5 flex-shrink-0" />
                        <span>{alertMsg}</span>
                     </div>
                   ))}
@@ -459,9 +473,9 @@ export default function DashboardPage() {
               <UtensilsCrossed className="h-5 w-5 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-            {overallLoading ? <Loader2 className="h-6 w-6 animate-spin text-primary my-1" /> : <div className="text-2xl font-bold font-body">{totalMealsToPrepare}</div>}
+            {isCoreDataLoading ? <Loader2 className="h-6 w-6 animate-spin text-primary my-1" /> : <div className="text-2xl font-bold font-body">{totalMealsToPrepare}</div>}
               <p className="text-xs text-muted-foreground font-body">
-                {overallLoading ? "Calcul en cours..." : `Inclut ${presentResidentsCountForFocusedMeal} résidents et ${totalGuestsForFocusedMeal} invités. Pour les résidents: ${dietSpecificMealsForFocusedMeal['Sans sel']} sans sel, ${dietSpecificMealsForFocusedMeal['Végétarien']} végé., ${dietSpecificMealsForFocusedMeal['Mixé']} mixés, ${dietSpecificMealsForFocusedMeal['Haché']} hachés.`}
+                {isCoreDataLoading ? "Calcul en cours..." : `Inclut ${presentResidentsCountForFocusedMeal} résidents et ${totalGuestsForFocusedMeal} invités. Pour les résidents: ${dietSpecificMealsForFocusedMeal['Sans sel']} sans sel, ${dietSpecificMealsForFocusedMeal['Végétarien']} végé., ${dietSpecificMealsForFocusedMeal['Mixé']} mixés, ${dietSpecificMealsForFocusedMeal['Haché']} hachés.`}
               </p>
             </CardContent>
           </Card>
@@ -498,12 +512,12 @@ export default function DashboardPage() {
               </div>
               <CardDescription className="font-body mt-2">
                 Ce récapitulatif des textures est basé sur les résidents marqués comme présents et les invités. Les repas des {totalGuestsForFocusedMeal > 0 ? `${totalGuestsForFocusedMeal} invité(s) sont inclus dans "Normal" ` : "invités sont "} sauf indication dans les commentaires de réservation.
-                {importedFileName ? ( 
-                  isDisplayingImportedMenuForFocusedMeal ? ( 
+                {importedFileName ? (
+                  isDisplayingImportedMenuForFocusedMeal ? (
                     <> Les plats listés ci-dessous pour le {focusedMealText.toLowerCase()} proviennent de votre fichier Excel importé : <strong>{importedFileName}</strong>. Un fichier Excel peut contenir les menus du déjeuner et du dîner.</>
-                  ) : ( 
+                  ) : (
                     (() => {
-                      const todayPlan = importedWeeklyPlan?.find(dayPlan => isToday(parseISO(dayPlan.date))); 
+                      const todayPlan = importedWeeklyPlan?.find(dayPlan => currentDateISO && dateIsToday(parseISO(dayPlan.date)));
                       if (todayPlan) {
                         return <> Le planning Excel (<strong>{importedFileName}</strong>) est chargé. Cependant, il ne contient pas de plats spécifiés pour le {focusedMealText.toLowerCase()} d'aujourd'hui dans ce fichier (vérifiez 'TypeRepas' et 'RolePlat'). Les plats affichés ci-dessous sont donc les plats par défaut.</>;
                       } else {
@@ -511,7 +525,7 @@ export default function DashboardPage() {
                       }
                     })()
                   )
-                ) : ( 
+                ) : (
                   <> Aucun planning Excel n'a été importé. Les plats affichés ci-dessous sont les plats par défaut. Un fichier Excel peut contenir les menus pour le déjeuner et le dîner.</>
                 )}
                 {importedFileName && <Button variant="link" size="sm" className="p-0 h-auto text-xs ml-1" onClick={clearImportedPlan}>Effacer le planning importé</Button>}
@@ -527,7 +541,7 @@ export default function DashboardPage() {
                   <>
                       {ALL_PREPARATION_TYPES.map(prepType => {
                           const count = globalTextureCountsForFocusedMeal[prepType];
-                          if (count === 0) return null; 
+                          if (count === 0) return null;
 
                           return (
                               <div key={prepType} className="py-3 px-4 rounded-lg border mb-3 bg-background shadow-sm last:mb-0">
@@ -596,4 +610,3 @@ export default function DashboardPage() {
     </AppLayout>
   );
 }
-
