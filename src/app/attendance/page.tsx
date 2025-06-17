@@ -69,8 +69,7 @@ const translateMealLocation = (location: MealLocation): string => {
 const getUnitColorClass = (unitName: string | undefined): string => {
   const name = (unitName || 'Non assignée').toLowerCase();
 
-  // Specific unit names
-  if (name.includes('jardin')) return 'bg-pink-100 border-pink-300 text-pink-800 hover:bg-pink-200/80'; // Changed to pale rose
+  if (name.includes('jardin')) return 'bg-pink-100 border-pink-300 text-pink-800 hover:bg-pink-200/80';
   if (name.includes('vignes')) return 'bg-purple-100 border-purple-300 text-purple-800 hover:bg-purple-200/80';
   if (name.includes('colline')) return 'bg-yellow-100 border-yellow-300 text-yellow-800 hover:bg-yellow-200/80';
   if (name.includes('forêt')) return 'bg-emerald-100 border-emerald-300 text-emerald-800 hover:bg-emerald-200/80';
@@ -78,18 +77,16 @@ const getUnitColorClass = (unitName: string | undefined): string => {
   if (name.includes('roseau')) return 'bg-lime-100 border-lime-300 text-lime-800 hover:bg-lime-200/80';
   if (name.includes('pinède')) return 'bg-teal-100 border-teal-300 text-teal-800 hover:bg-teal-200/80';
   
-  // Thematic keywords as fallback if specific name not matched above
   if (name.includes('mer') || name.includes('océan')) return 'bg-blue-100 border-blue-300 text-blue-800 hover:bg-blue-200/80';
   if (name.includes('lavande') || name.includes('violet') || name.includes('aurore') || name.includes('lilas') || name.includes('améthyste')) return 'bg-purple-100 border-purple-300 text-purple-800 hover:bg-purple-200/80';
   if (name.includes('vert') || name.includes('prairie') || name.includes('émeraude')) return 'bg-emerald-100 border-emerald-300 text-emerald-800 hover:bg-emerald-200/80';
   if (name.includes('jaune') || name.includes('soleil') || name.includes('lumière') || name.includes('mimosa') || name.includes('citron')) return 'bg-yellow-100 border-yellow-300 text-yellow-800 hover:bg-yellow-200/80';
   if (name.includes('orange') || name.includes('coucher') || name.includes('automne') || name.includes('mandarine') || name.includes('abricot')) return 'bg-orange-100 border-orange-300 text-orange-800 hover:bg-orange-200/80';
-  // if (name.includes('rose') || name.includes('fleur') || name.includes('corail') || name.includes('pivoine')) return 'bg-pink-100 border-pink-300 text-pink-800 hover:bg-pink-200/80'; // Already used for Jardin, keep if Jardin logic changes
   if (name.includes('rouge') || name.includes('passion') || name.includes('volcan') || name.includes('rubis') || name.includes('coquelicot')) return 'bg-red-100 border-red-300 text-red-800 hover:bg-red-200/80';
   
   if (name.includes('non assignée')) return 'bg-slate-100 border-slate-300 text-slate-800 hover:bg-slate-200/80';
   
-  return 'bg-gray-100 border-gray-300 text-gray-800 hover:bg-gray-200/80'; // Default fallback
+  return 'bg-gray-100 border-gray-300 text-gray-800 hover:bg-gray-200/80';
 };
 
 
@@ -160,7 +157,6 @@ export default function AttendancePage() {
       return acc;
     }, {} as Record<string, Resident[]>);
 
-    // Sort residents within each unit by last name, then first name
     for (const unitName in grouped) {
       grouped[unitName].sort((a, b) => {
         const lastNameComparison = a.lastName.localeCompare(b.lastName);
@@ -173,7 +169,7 @@ export default function AttendancePage() {
 
   const sortedUnitNames = useMemo(() => {
     return Object.keys(groupedResidentsByUnit).sort((a, b) => {
-      if (a === 'Non assignée') return 1; // Always sort "Non assignée" to the end
+      if (a === 'Non assignée') return 1; 
       if (b === 'Non assignée') return -1;
       return a.localeCompare(b);
     });
@@ -276,7 +272,7 @@ export default function AttendancePage() {
 
           if (currentData.status !== initialData.status) {
             newNotifications.push({
-              id: `notif-${Date.now()}-${residentId}-${mealType}-status`,
+              id: `notif-${Date.now()}-${residentId}-${mealType}-status-${Math.random().toString(36).substring(2, 9)}`,
               timestamp: new Date().toISOString(),
               type: currentData.status === 'absent' || currentData.status === 'external' ? 'absence' : 'attendance',
               title: `Changement de Présence`,
@@ -290,7 +286,7 @@ export default function AttendancePage() {
               currentData.mealLocation !== initialData.mealLocation && 
               currentData.mealLocation !== 'not_applicable') {
              newNotifications.push({
-                id: `notif-${Date.now()}-${residentId}-${mealType}-location`,
+                id: `notif-${Date.now()}-${residentId}-${mealType}-location-${Math.random().toString(36).substring(2, 9)}`,
                 timestamp: new Date().toISOString(),
                 type: 'info',
                 title: `Changement Lieu Repas`,
@@ -306,15 +302,34 @@ export default function AttendancePage() {
         try {
           const existingNotificationsRaw = localStorage.getItem(SHARED_NOTIFICATIONS_KEY);
           let allNotifications: Notification[] = existingNotificationsRaw ? JSON.parse(existingNotificationsRaw) : [];
-          allNotifications = [...newNotifications, ...allNotifications]; 
+          allNotifications = [...newNotifications, ...allNotifications].sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
           localStorage.setItem(SHARED_NOTIFICATIONS_KEY, JSON.stringify(allNotifications));
+
+          newNotifications.forEach(notif => {
+            toast({
+              title: notif.title,
+              description: notif.message,
+            });
+          });
+          
+          // Play sound once if there are any new notifications
+          const audio = new Audio(); // Placeholder: const audio = new Audio('/sounds/notification.mp3');
+          audio.play().catch(error => console.warn("Audio play failed (attendance):", error));
+
         } catch (e) {
-          console.error("Error saving new notifications to localStorage", e);
+          console.error("Error saving new notifications to localStorage or playing sound:", e);
+          toast({ variant: "destructive", title: "Erreur Notifications", description: "Impossible de sauvegarder/notifier les nouvelles alertes." });
         }
       }
 
       setInitialAttendanceDataForUndo(deepCopyOptimizedAttendance(attendanceData));
-      toast({ title: "Présences Enregistrées", description: "Les modifications et notifications ont été sauvegardées localement." });
+      if (newNotifications.length === 0) {
+        toast({ title: "Présences Enregistrées", description: "Aucune nouvelle notification générée. Les présences ont été sauvegardées." });
+      } else {
+        // Individual toasts already shown. A general success could be added if desired.
+        // For example: toast({ title: "Opération Terminée", description: "Présences et notifications traitées."});
+      }
+
     } catch (e) {
       console.error("Error saving attendance to localStorage", e);
       toast({ variant: "destructive", title: "Erreur de Sauvegarde", description: "Impossible de sauvegarder les présences." });

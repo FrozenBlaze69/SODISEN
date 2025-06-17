@@ -93,7 +93,7 @@ export default function MealReservationPage() {
       }
     );
     return () => unsubscribe(); 
-  }, []);
+  }, [toast]);
 
 
   const form = useForm<ReservationFormValues>({
@@ -118,29 +118,42 @@ export default function MealReservationPage() {
       const result = await handleMealReservation(serverActionData);
       
       if (result.success && result.reservationDetails) {
-        toast({
-          title: "Réservation enregistrée",
-          description: result.message,
-        });
+        let toastTitle = "Réservation Effectuée";
+        let toastMessage = result.message; // Default to server message
+        let newResaNotificationForStorage: Notification | null = null;
 
         if (clientSideRendered) {
             try {
-                const newNotification: Notification = {
-                    id: `notif-resa-${Date.now()}`,
+                newResaNotificationForStorage = {
+                    id: `notif-resa-${Date.now()}-${Math.random().toString(36).substring(2,9)}`,
                     timestamp: new Date().toISOString(),
                     type: 'reservation_made', 
                     title: 'Nouvelle Réservation Repas',
                     message: `${result.reservationDetails.residentName} a une réservation pour ${result.reservationDetails.numberOfGuests} invité(s) le ${formatDateFn(parseISO(result.reservationDetails.mealDate), 'dd/MM/yyyy', { locale: fr })} (${result.reservationDetails.mealType === 'lunch' ? 'Déjeuner' : 'Dîner'}).`,
                     isRead: false,
                 };
+                toastTitle = newResaNotificationForStorage.title;
+                toastMessage = newResaNotificationForStorage.message;
+
                 const existingNotificationsRaw = localStorage.getItem(SHARED_NOTIFICATIONS_KEY);
                 let allNotifications: Notification[] = existingNotificationsRaw ? JSON.parse(existingNotificationsRaw) : [];
-                allNotifications = [newNotification, ...allNotifications]; 
+                allNotifications = [newResaNotificationForStorage, ...allNotifications].sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
                 localStorage.setItem(SHARED_NOTIFICATIONS_KEY, JSON.stringify(allNotifications));
+
             } catch (notifError) {
-                console.error("Error saving reservation notification to localStorage:", notifError);
+                console.error("Error processing/saving reservation notification to localStorage:", notifError);
+                toast({ variant: "destructive", title: "Erreur Locale Notification", description: "La notification de réservation n'a pas pu être sauvegardée localement." });
             }
         }
+        
+        toast({
+          title: toastTitle,
+          description: toastMessage,
+        });
+
+        // Placeholder: const audio = new Audio('/sounds/notification.mp3'); // Remplacez par le chemin de votre fichier son
+        const audio = new Audio();
+        audio.play().catch(error => console.warn("Audio play failed (reservation):", error));
         
         form.reset({
           residentName: '',

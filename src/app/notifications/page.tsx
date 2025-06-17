@@ -47,16 +47,15 @@ export default function NotificationsPage() {
         loadedNotifications = JSON.parse(storedNotificationsRaw);
       }
       
-      // If loadedNotifications is not empty, sort and set. Otherwise, set an empty array.
       if (loadedNotifications.length > 0) {
           setNotifications(loadedNotifications.sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
       } else {
-          setNotifications([]); // Set to empty array if nothing in localStorage
+          setNotifications([]); 
       }
 
     } catch (error) {
       console.error("Error loading notifications from localStorage:", error);
-      setNotifications([]); // Set to empty array on error as well
+      setNotifications([]); 
     }
   }, []);
 
@@ -128,7 +127,14 @@ export default function NotificationsPage() {
       updateLocalStorageNotifications(updatedNotifications);
       setNotifications(updatedNotifications);
       
-      toast({ title: "Notification Envoyée", description: "Votre notification personnalisée a été ajoutée." });
+      toast({
+        title: newNotification.title,
+        description: newNotification.message,
+      });
+      // Placeholder: const audio = new Audio('/sounds/notification.mp3'); // Remplacez par le chemin de votre fichier son
+      const audio = new Audio(); 
+      audio.play().catch(error => console.warn("Audio play failed (custom notification):", error));
+      
       form.reset();
     } catch (error) {
       console.error("Error sending custom notification:", error);
