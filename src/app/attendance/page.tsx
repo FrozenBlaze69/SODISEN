@@ -398,7 +398,7 @@ export default function AttendancePage() {
                   {sortedUnitNames.map(unitName => (
                     <React.Fragment key={unitName}>
                       <TableRow className={getUnitColorClass(unitName)}>
-                        <TableCell colSpan={5} className="font-semibold py-2 px-4 text-base"> {/* Adjusted colSpan to 5 */}
+                        <TableCell colSpan={6} className="font-semibold py-2 px-4 text-base">
                           <div className="flex items-center gap-2">
                             <Building className="h-5 w-5"/>
                             Unité: {unitName} ({groupedResidentsByUnit[unitName].length} résident(s))
