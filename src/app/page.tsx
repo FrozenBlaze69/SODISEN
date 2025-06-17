@@ -162,11 +162,11 @@ export default function DashboardPage() {
         if (loadedNotifications.length > 0) {
             setDashboardNotifications(loadedNotifications.sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
         } else {
-            setDashboardNotifications([]); // Set to empty array if nothing in localStorage
+            setDashboardNotifications([]); 
         }
     } catch (error) {
         console.error("Error loading notifications from localStorage for dashboard:", error);
-        setDashboardNotifications([]); // Set to empty array on error
+        setDashboardNotifications([]); 
     }
 
     setIsLoadingResidents(true);
@@ -290,8 +290,12 @@ export default function DashboardPage() {
             counts[prepType]++;
         }
     });
+    // Add guests to the 'Normal' count
+    if (!isLoadingReservations) { // Ensure guests count is stable
+        counts['Normal'] += totalGuestsForFocusedMeal;
+    }
     return counts;
-  }, [presentAttendancesForFocusedMeal, activeResidents]);
+  }, [presentAttendancesForFocusedMeal, activeResidents, totalGuestsForFocusedMeal, isLoadingReservations]);
 
 
   useEffect(() => {
@@ -482,7 +486,7 @@ export default function DashboardPage() {
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                   <div className="flex items-center gap-2">
                       <UtensilsCrossed className="h-6 w-6 text-primary" />
-                      <CardTitle className="font-headline">Total Textures à Préparer ({focusedMealText} - Résidents)</CardTitle>
+                      <CardTitle className="font-headline">Total Textures à Préparer ({focusedMealText} - Résidents & Invités)</CardTitle>
                   </div>
                   <form onSubmit={onFileUpload} className="flex items-center gap-2">
                       <Input
@@ -493,7 +497,7 @@ export default function DashboardPage() {
                   </form>
               </div>
               <CardDescription className="font-body mt-2">
-                Ce récapitulatif des textures est basé sur les résidents marqués comme présents. Les repas des {totalGuestsForFocusedMeal > 0 ? `${totalGuestsForFocusedMeal} invité(s) sont ` : "invités sont "} généralement 'Normal' sauf indication dans les commentaires de réservation.
+                Ce récapitulatif des textures est basé sur les résidents marqués comme présents et les invités. Les repas des {totalGuestsForFocusedMeal > 0 ? `${totalGuestsForFocusedMeal} invité(s) sont inclus dans "Normal" ` : "invités sont "} sauf indication dans les commentaires de réservation.
                 {importedFileName ? ( 
                   isDisplayingImportedMenuForFocusedMeal ? ( 
                     <> Les plats listés ci-dessous pour le {focusedMealText.toLowerCase()} proviennent de votre fichier Excel importé : <strong>{importedFileName}</strong>. Un fichier Excel peut contenir les menus du déjeuner et du dîner.</>
@@ -514,12 +518,12 @@ export default function DashboardPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
-              {isLoadingResidents ? (
+              {isLoadingResidents || isLoadingReservations ? (
                   <div className="flex justify-center items-center py-10">
                       <Loader2 className="h-8 w-8 animate-spin text-primary" />
                       <p className="ml-2 font-body text-muted-foreground">Chargement des données de préparation...</p>
                   </div>
-              ) : presentResidentsCountForFocusedMeal > 0 ? (
+              ) : (presentResidentsCountForFocusedMeal + totalGuestsForFocusedMeal) > 0 ? (
                   <>
                       {ALL_PREPARATION_TYPES.map(prepType => {
                           const count = globalTextureCountsForFocusedMeal[prepType];
@@ -549,12 +553,12 @@ export default function DashboardPage() {
                               </div>
                           );
                       })}
-                      {Object.values(globalTextureCountsForFocusedMeal).every(c => c === 0) && presentResidentsCountForFocusedMeal > 0 && (
-                           <p className="text-muted-foreground font-body text-center py-4">Aucune texture spécifique n'est requise pour les résidents présents, ou les données de texture sont manquantes.</p>
+                      {Object.values(globalTextureCountsForFocusedMeal).every(c => c === 0) && (presentResidentsCountForFocusedMeal + totalGuestsForFocusedMeal) > 0 && (
+                           <p className="text-muted-foreground font-body text-center py-4">Aucune texture spécifique n'est requise, ou les données de texture sont manquantes.</p>
                       )}
                   </>
               ) : (
-                   <p className="text-muted-foreground font-body text-center py-4">Aucun résident présent au {focusedMealText.toLowerCase()} pour calculer les textures.</p>
+                   <p className="text-muted-foreground font-body text-center py-4">Aucun résident présent ni invité au {focusedMealText.toLowerCase()} pour calculer les textures.</p>
               )}
             </CardContent>
           </Card>
@@ -592,3 +596,4 @@ export default function DashboardPage() {
     </AppLayout>
   );
 }
+
