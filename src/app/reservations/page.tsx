@@ -61,16 +61,23 @@ export default function MealReservationPage() {
 
   useEffect(() => {
     setClientSideRendered(true);
+    // User request: clear the list as part of this fix.
+    // This effect runs once on mount.
     try {
-      const storedReservations = localStorage.getItem(LOCAL_STORAGE_RESERVATIONS_KEY);
-      if (storedReservations) {
-        setReservationsList(JSON.parse(storedReservations).sort((a:MealReservation, b:MealReservation) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
-      }
+      localStorage.removeItem(LOCAL_STORAGE_RESERVATIONS_KEY);
+      setReservationsList([]); // Ensure state is also empty
+      // Optional: toast that the list was cleared, but can be removed if too noisy
+      // toast({
+      //   title: "Liste des réservations réinitialisée",
+      //   description: "Les réservations précédemment stockées ont été effacées.",
+      //   duration: 3000
+      // });
     } catch (error) {
-      console.error("Error loading reservations from localStorage:", error);
-      setReservationsList([]);
+      console.error("Error clearing reservations from localStorage:", error);
+      setReservationsList([]); // Fallback to empty list
     }
-  }, []);
+  }, []); // Empty dependency array ensures this runs once on mount
+
 
   const form = useForm<ReservationFormValues>({
     resolver: zodResolver(reservationFormSchema),
@@ -96,12 +103,12 @@ export default function MealReservationPage() {
       if (result.success && result.reservationDetails) {
         const newReservation = result.reservationDetails;
         
-        const updatedListForState = [newReservation, ...reservationsList].sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        const updatedListForStateAndStorage = [newReservation, ...reservationsList].sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
         
         if (clientSideRendered) {
             try {
-                localStorage.setItem(LOCAL_STORAGE_RESERVATIONS_KEY, JSON.stringify(updatedListForState));
-                setReservationsList(updatedListForState); 
+                localStorage.setItem(LOCAL_STORAGE_RESERVATIONS_KEY, JSON.stringify(updatedListForStateAndStorage));
+                setReservationsList(updatedListForStateAndStorage); 
                 toast({
                   title: "Réservation enregistrée",
                   description: result.message,
@@ -122,15 +129,20 @@ export default function MealReservationPage() {
 
             } catch (error) {
                 console.error("Error saving new reservation to localStorage:", error);
+                // Even if localStorage fails for some reason, the server action succeeded.
+                // We might have an inconsistent state if localStorage save fails here.
+                // Add the reservation to the current view at least.
+                setReservationsList(prevList => [newReservation, ...prevList].sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
                 toast({
                   variant: "destructive",
-                  title: "Erreur de sauvegarde locale",
-                  description: "La réservation n'a pas pu être sauvegardée localement. Elle pourrait ne pas persister.",
+                  title: "Erreur de sauvegarde locale (Réservation)",
+                  description: "La réservation a été envoyée, mais n'a pas pu être sauvegardée localement. Elle pourrait ne pas persister après rafraîchissement.",
                 });
             }
         } else {
-            setReservationsList(updatedListForState);
-             toast({
+            // Client not ready, this case is less likely now but good to have
+            setReservationsList(prevList => [newReservation, ...prevList].sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+            toast({
               title: "Réservation traitée (client non prêt)",
               description: result.message,
             });
@@ -164,33 +176,32 @@ export default function MealReservationPage() {
 
   const handleDeleteReservation = (reservationId: string) => {
     if (!clientSideRendered) {
-        toast({ variant: "destructive", title: "Erreur", description: "L'application n'est pas prête pour cette action."});
-        return;
+      toast({ variant: "destructive", title: "Erreur", description: "L'application n'est pas prête pour cette action." });
+      return;
     }
 
     if (window.confirm(`Êtes-vous sûr de vouloir supprimer cette réservation (ID: ${reservationId}) ? Cette action est irréversible.`)) {
-        const currentReservations = [...reservationsList]; 
-        const reservationExists = currentReservations.some(r => r.id === reservationId);
+      const originalLength = reservationsList.length;
+      const updatedReservations = reservationsList.filter(r => r.id !== reservationId);
 
-        if (!reservationExists) {
-            toast({ variant: "default", title: "Information", description: "La réservation n'a pas été trouvée ou a déjà été supprimée." });
-            return; 
-        }
-
-        const updatedReservations = currentReservations.filter(r => r.id !== reservationId);
-        
+      if (updatedReservations.length < originalLength) { // An item was actually found and removed
         try {
-            localStorage.setItem(LOCAL_STORAGE_RESERVATIONS_KEY, JSON.stringify(updatedReservations));
-            setReservationsList(updatedReservations); 
-            toast({title: "Réservation supprimée", description: "La réservation a été retirée de la liste et sauvegardée."});
+          localStorage.setItem(LOCAL_STORAGE_RESERVATIONS_KEY, JSON.stringify(updatedReservations));
+          setReservationsList(updatedReservations); // Update state ONLY if localStorage was successful
+          toast({ title: "Réservation supprimée", description: "La réservation a été retirée de la liste et sauvegardée." });
         } catch (error) {
-            console.error("Error saving updated reservations to localStorage after delete:", error);
-            toast({
-                variant: "destructive",
-                title: "Erreur de Sauvegarde Locale",
-                description: "La suppression n'a pas pu être sauvegardée localement. La modification pourrait ne pas persister."
-            });
+          console.error("Erreur sauvegarde localStorage après suppression:", error);
+          toast({
+            variant: "destructive",
+            title: "Erreur Sauvegarde Locale",
+            description: "La suppression n'a pas pu être sauvegardée localement. La modification pourrait ne pas persister.",
+          });
+          // Do NOT update setReservationsList here, so the UI reflects the persistence failure
         }
+      } else {
+        // No item was removed, meaning the ID wasn't found in the current state
+        toast({ variant: "default", title: "Information", description: "Réservation non trouvée ou déjà supprimée de la vue actuelle." });
+      }
     }
   };
 
@@ -358,17 +369,17 @@ export default function MealReservationPage() {
                 Liste des Réservations Enregistrées
             </CardTitle>
             <CardDescription className="font-body">
-                Visualisez ici les réservations de repas pour les invités.
+                Visualisez ici les réservations de repas pour les invités. La liste est réinitialisée à chaque chargement de cette page.
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {clientSideRendered && reservationsList.length === 0 ? (
-                <p className="text-muted-foreground font-body text-center py-4">Aucune réservation enregistrée pour le moment.</p>
-            ) : !clientSideRendered ? (
+            {!clientSideRendered ? (
                  <div className="flex justify-center items-center py-10">
                     <Loader2 className="h-8 w-8 animate-spin text-primary" />
                     <p className="ml-2 font-body text-muted-foreground">Chargement des réservations...</p>
                 </div>
+            ) : reservationsList.length === 0 ? (
+                <p className="text-muted-foreground font-body text-center py-4">Aucune réservation enregistrée pour le moment.</p>
             ) : (
                 <div className="overflow-x-auto">
                     <Table>
@@ -411,7 +422,7 @@ export default function MealReservationPage() {
             )}
           </CardContent>
            <CardFooter>
-             <p className="text-xs text-muted-foreground font-body">Les réservations sont stockées localement dans le navigateur.</p>
+             <p className="text-xs text-muted-foreground font-body">Les réservations sont stockées localement dans le navigateur pour la session en cours.</p>
            </CardFooter>
         </Card>
       </div>
